@@ -2,8 +2,6 @@
 
 一款本地运行的桌面白板软件，Node.js + Electron + 原生 Canvas 2D 实现，无任何前端框架依赖。
 
-![画板效果](smoke-board.png)
-
 ## 快速开始
 
 **最简单的方式：双击 `启动白板.bat`**，它会自动清理环境变量、按需安装依赖并打开窗口。
@@ -168,8 +166,6 @@ rcedit 替换文件失败。electron-builder 内置 3 次重试，但**间隔太
 ## 手写笔压感
 
 检测到手写笔（`PointerEvent.pointerType === 'pen'`）时，画笔笔画粗细**随笔压实时变化**。
-
-![压感效果](pressure-demo.png)
 
 ### 面板设置
 
