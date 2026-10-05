@@ -64,20 +64,47 @@ body {
   cursor: default;
 }
 
+/*
+ * 全局滚动条样式 —— 所有可滚动区域共用一套，不要再局部覆盖。
+ *
+ * 参数提到变量里，是为了让窄栏（左侧栏工具区）能只调宽度、
+ * 其余（颜色/圆角/内缩边框/hover）与面板完全一致。
+ *
+ * 踩坑：左侧栏曾单独写 `scrollbar-width: thin`，这条标准属性会
+ * **整体接管该元素的滚动条渲染**，导致 `::-webkit-scrollbar-*` 规则失效，
+ * 表现就是"面板和工具选择的滚动条长得不一样"。
+ * 要统一风格，就不要在局部再声明 scrollbar-width / scrollbar-color。
+ */
+:root {
+  --sb-w: 9px;
+  --sb-thumb: #2b313d;
+  --sb-thumb-hover: #3a4252;
+  --sb-inset: 2px;
+}
+
 ::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: var(--sb-w);
+  height: var(--sb-w);
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2b313d;
+  background: var(--sb-thumb);
   border-radius: 5px;
-  border: 2px solid var(--bg-elev);
+  /* 用底色描边制造"滑块比轨道窄"的内缩效果 */
+  border: var(--sb-inset) solid var(--bg-elev);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a4252;
+  background: var(--sb-thumb-hover);
+}
+/* 轨道两端的箭头按钮：Chromium 默认会给，这里隐藏掉，保持极简 */
+::-webkit-scrollbar-button {
+  display: none;
+}
+/* 滚动条交汇处的方块（同时有横竖滚动时出现） */
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /*
@@ -162,8 +189,14 @@ body {
   gap: 3px;
   overflow-y: auto;
   overflow-x: hidden;
-  /* 滚动条太窄会挤歪 40px 宽的图标，这里让它浮在内容上不占位 */
-  scrollbar-width: thin;
+  /*
+   * 滚动条与右侧面板保持完全一致（颜色/圆角/内缩/hover 全走全局规则），
+   * 这里只把宽度调窄一档：窄栏本身只有 74px，9px 滚动条会压到 40px 的图标。
+   * **不要用 scrollbar-width: thin** —— 那条标准属性会整体接管渲染，
+   * 让下面的 ::-webkit-scrollbar-* 失效，两处风格就对不上了。
+   */
+  --sb-w: 7px;
+  --sb-inset: 1px;
 }
 
 /* 底部分组：文件与视图操作。固定贴底，任何窗口高度都可见 */

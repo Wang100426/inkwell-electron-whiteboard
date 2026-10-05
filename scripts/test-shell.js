@@ -72,8 +72,10 @@ app.whenReady().then(async () => {
   check('preload 暴露 onMaximizedChange', /onMaximizedChange:/.test(preSrc));
 
   /* ---------- 打开真实窗口做 DOM 断言 ---------- */
+  // 高度取 620：保证 rail-tools 内容溢出、真正出现滚动条，
+  // 否则滚动条相关断言测得的是"没有滚动条"的空情况。
   const win = new BrowserWindow({
-    width: 1440, height: 900, show: true, useContentSize: true, backgroundColor: '#0f1115',
+    width: 1440, height: 620, show: true, useContentSize: true, backgroundColor: '#0f1115',
     frame: false, titleBarStyle: 'hidden', titleBarOverlay: false,
     webPreferences: {
       preload: path.join(ROOT, 'src', 'preload.js'),
@@ -158,6 +160,57 @@ app.whenReady().then(async () => {
   check('rail 是拖拽区', dom.railDrag === 'drag', dom.railDrag);
   check('保存按钮 no-drag', dom.saveDrag === 'no-drag', dom.saveDrag);
   check('窗口按钮 no-drag', dom.minDrag === 'no-drag', dom.minDrag);
+
+  /* ---------- H. 滚动条风格统一 ---------- */
+  /*
+   * 左侧栏工具区与右侧面板必须是同一套滚动条视觉。
+   *
+   * 曾经的 bug：.rail-tools 单独写了 `scrollbar-width: thin`，
+   * 这条标准属性会**整体接管**该元素的滚动条渲染，
+   * 使全局 ::-webkit-scrollbar-* 规则失效 —— 两处滚动条长相不一致。
+   *
+   * 判定标准：
+   *  1. 两处都不能有 scrollbar-width / scrollbar-color 的局部覆盖
+   *  2. 滑块颜色变量必须一致（同一个 --sb-thumb）
+   *  3. 全局样式表里必须存在 ::-webkit-scrollbar-thumb 规则
+   */
+  const sb = await evalJs(`
+    const rt = document.getElementById('railTools');
+    const pn = document.querySelector('.panel');
+    const cs = (el, p) => getComputedStyle(el).getPropertyValue(p).trim();
+    // 遍历样式表，找出所有含 scrollbar 的选择器
+    const sel = [];
+    for (const sheet of document.styleSheets) {
+      let rules;
+      try { rules = sheet.cssRules || []; } catch (e) { continue; }
+      for (const r of rules) {
+        if (r.selectorText && /scrollbar/i.test(r.selectorText)) sel.push(r.selectorText);
+      }
+    }
+    return {
+      railSbWidth: cs(rt, 'scrollbar-width'),
+      panelSbWidth: cs(pn, 'scrollbar-width'),
+      railThumb: cs(rt, '--sb-thumb'),
+      panelThumb: cs(pn, '--sb-thumb'),
+      railW: cs(rt, '--sb-w'),
+      panelW: cs(pn, '--sb-w'),
+      railInset: cs(rt, '--sb-inset'),
+      panelInset: cs(pn, '--sb-inset'),
+      scrollbarSelectors: sel,
+      railScrollable: rt.scrollHeight > rt.clientHeight,
+    };
+  `);
+  check('rail 未覆盖 scrollbar-width', sb.railSbWidth === 'auto', sb.railSbWidth);
+  check('panel 未覆盖 scrollbar-width', sb.panelSbWidth === 'auto', sb.panelSbWidth);
+  check('两处滑块颜色变量一致', sb.railThumb === sb.panelThumb && !!sb.railThumb,
+    { rail: sb.railThumb, panel: sb.panelThumb });
+  check('全局有 ::-webkit-scrollbar-thumb 规则',
+    sb.scrollbarSelectors.some((s) => /::-webkit-scrollbar-thumb/.test(s)), sb.scrollbarSelectors);
+  check('滚动条箭头按钮已隐藏',
+    sb.scrollbarSelectors.some((s) => /::-webkit-scrollbar-button/.test(s)));
+  // 只允许宽度/内缩不同，颜色必须同源
+  check('rail 滚动条更窄（适配 74px 窄栏）',
+    parseInt(sb.railW, 10) < parseInt(sb.panelW, 10), { rail: sb.railW, panel: sb.panelW });
 
   /* ---------- E. 网格单一状态源 ---------- */
   const grid = await evalJs(`
