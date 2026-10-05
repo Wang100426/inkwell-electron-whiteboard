@@ -1,0 +1,59 @@
+{
+  "name": "inkwell-whiteboard",
+  "version": "1.1.0",
+  "description": "InkWell - 一款精致的本地白板软件",
+  "main": "src/main.js",
+  "author": "IT老师",
+  "license": "MIT",
+  "scripts": {
+    "build:renderer": "node build-bundle.js",
+    "start": "npm run build:renderer && electron .",
+    "dev": "npm run build:renderer && electron . --dev",
+    "smoke": "npm run build:renderer && electron scripts/smoke.js",
+    "test:eraser": "node scripts/test-eraser.js",
+    "test:text": "electron scripts/test-text-edit.js",
+    "test:pressure": "node scripts/test-pressure.js",
+    "test:pressure:e2e": "electron scripts/test-pressure-e2e.js",
+    "test:all": "npm run test:pressure && npm run test:eraser && npm run test:close && npm run test:fill && npm run test:text && npm run test:edit && npm run test:realmouse && npm run test:zorder && npm run test:pressure:e2e && npm run smoke",
+    "fix:sign": "node scripts/fix-wincodesign.js",
+    "fix:builder": "node scripts/fix-electron-builder.js",
+    "dist": "npm run build:renderer && npm run fix:sign && npm run fix:builder && electron-builder --win",
+    "dist:dir": "npm run build:renderer && npm run fix:sign && npm run fix:builder && electron-builder --win --dir",
+    "test:close": "node scripts/test-close.js",
+    "test:edit": "electron scripts/test-edit-close.js",
+    "test:fill": "electron scripts/test-fill.js",
+    "test:realmouse": "electron scripts/test-realmouse.js",
+    "test:zorder": "electron scripts/test-zorder.js",
+    "verify:exe": "node scripts/verify-exe.js",
+    "diag:view": "electron scripts/diag-userview.js",
+    "diag:contrast": "electron scripts/diag-contrast2.js",
+    "inspect:asar": "node scripts/inspect-asar.js"
+  },
+  "devDependencies": {
+    "electron": "^32.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.inkwell.whiteboard",
+    "productName": "InkWell",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "InkWell 白板"
+    }
+  }
+}

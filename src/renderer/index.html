@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;" />
+  <title>InkWell 白板</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- 顶栏 -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 19l7-7 3 3-7 7-3-3z" />
+            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+            <path d="M2 2l7.586 7.586" />
+            <circle cx="11" cy="11" r="2" />
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-name">InkWell</span>
+          <span class="brand-sub" id="fileName">未命名白板</span>
+        </div>
+      </div>
+
+      <div class="topbar-center">
+        <div class="seg">
+          <button class="btn-icon" id="btnUndo" title="撤销 (Ctrl+Z)" aria-label="撤销">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M3.5 13a9 9 0 1 0 2.1-5.6L3 10"/></svg>
+          </button>
+          <button class="btn-icon" id="btnRedo" title="重做 (Ctrl+Y)" aria-label="重做">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M20.5 13a9 9 0 1 1-2.1-5.6L21 10"/></svg>
+          </button>
+        </div>
+
+        <div class="seg">
+          <button class="btn-icon" id="btnZoomOut" title="缩小 (Ctrl+-)" aria-label="缩小">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 12h14"/></svg>
+          </button>
+          <button class="zoom-label" id="zoomLabel" title="点击重置视图 (Ctrl+0)">100%</button>
+          <button class="btn-icon" id="btnZoomIn" title="放大 (Ctrl+=)" aria-label="放大">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <button class="btn" id="btnGrid" title="网格 (G)">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+          网格
+        </button>
+        <button class="btn" id="btnExport" title="导出 PNG (Ctrl+Shift+E)">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          导出
+        </button>
+        <button class="btn" id="btnOpen" title="打开 (Ctrl+O)">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          打开
+        </button>
+        <button class="btn btn-primary" id="btnSave" title="保存 (Ctrl+S)">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h7V3M8 21v-6h8v6"/></svg>
+          保存
+        </button>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <!-- 左侧工具栏 -->
+      <aside class="toolbar" id="toolbar">
+        <button class="tool" data-tool="select" title="选择 (V)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l6.5 17 2.2-6.9 7.3-2.1z"/></svg>
+          <span>选择</span>
+        </button>
+        <button class="tool" data-tool="pen" title="画笔 (B)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 10-10-3-3L5 16z"/><path d="M14 5l3 3"/></svg>
+          <span>画笔</span>
+        </button>
+        <button class="tool" data-tool="eraser" title="橡皮 (E)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15l7-7 6 6-4 4H7z"/><path d="M20 20h-9"/></svg>
+          <span>橡皮</span>
+        </button>
+        <button class="tool" data-tool="fill" title="填充 (F)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 3.5l8 8a1.4 1.4 0 010 2l-4.4 4.4a1.4 1.4 0 01-2 0L4 12l4.5-8.5z"/><path d="M4.6 11.6h11"/><path d="M19.5 15c1.1 1.4 1.7 2.3 1.7 3a1.7 1.7 0 11-3.4 0c0-.7.6-1.6 1.7-3z"/></svg>
+          <span>填充</span>
+        </button>
+        <div class="tool-sep"></div>
+        <button class="tool" data-tool="rect" title="矩形 (R)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="6" width="16" height="12" rx="2"/></svg>
+          <span>矩形</span>
+        </button>
+        <button class="tool" data-tool="ellipse" title="椭圆 (O)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="12" rx="8" ry="6.5"/></svg>
+          <span>椭圆</span>
+        </button>
+        <button class="tool" data-tool="line" title="直线 (L)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 19L19 5"/></svg>
+          <span>直线</span>
+        </button>
+        <button class="tool" data-tool="arrow" title="箭头 (A)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19L19 5"/><path d="M12 5h7v7"/></svg>
+          <span>箭头</span>
+        </button>
+        <div class="tool-sep"></div>
+        <button class="tool" data-tool="text" title="文字 (T)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6V4h14v2"/><path d="M12 4v16M9 20h6"/></svg>
+          <span>文字</span>
+        </button>
+        <button class="tool" data-tool="note" title="便签 (N)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M5 4h14v10l-5 6H5z"/><path d="M19 14h-5v6"/></svg>
+          <span>便签</span>
+        </button>
+        <button class="tool" data-tool="hand" title="抓手 (H / 空格)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M12 10.5V4.5a1.5 1.5 0 0 1 3 0V11"/><path d="M15 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-6-6v-3.5a1.5 1.5 0 0 1 3 0V13"/></svg>
+          <span>抓手</span>
+        </button>
+      </aside>
+
+      <!-- 属性面板 -->
+      <aside class="panel" id="panel">
+        <section class="panel-group">
+          <h4 id="colorLabel">颜色</h4>
+          <div class="swatches" id="swatches"></div>
+          <div class="color-custom">
+            <input type="color" id="colorPicker" value="#e8ecf4" title="自定义颜色" />
+            <span id="colorHex">#E8ECF4</span>
+          </div>
+          <!-- 填充工具专用：清除填充。选中填充工具时出现 -->
+          <button class="btn btn-ghost btn-clear-fill" id="btnNoFill" hidden>清除填充</button>
+        </section>
+
+        <section class="panel-group">
+          <h4>线宽 <em id="widthValue">3</em></h4>
+          <div class="width-presets" id="widthPresets">
+            <button data-w="2"></button>
+            <button data-w="4"></button>
+            <button data-w="8"></button>
+            <button data-w="14"></button>
+          </div>
+          <input type="range" id="widthRange" min="1" max="40" value="3" />
+        </section>
+
+        <section class="panel-group" id="opacityGroup">
+          <h4>不透明度 <em id="opacityValue">100%</em></h4>
+          <input type="range" id="opacityRange" min="10" max="100" value="100" />
+        </section>
+
+        <section class="panel-group" id="pressureGroup">
+          <h4>压感 <em id="pressureDevice">未检测到</em></h4>
+          <label class="switch">
+            <input type="checkbox" id="pressureToggle" checked />
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+            <span class="switch-label">手写笔力度控粗细</span>
+          </label>
+          <h4 style="margin-top:2px">最粗 <em id="pressureMaxValue">18</em></h4>
+          <input type="range" id="pressureMaxRange" min="6" max="60" value="18" />
+          <p class="hint" id="pressureHint">用手写笔书写时，笔画粗细随力度变化。鼠标与普通触控板不受影响。</p>
+        </section>
+
+        <section class="panel-group" id="textGroup" hidden>
+          <h4>字号 <em id="fontSizeValue">20</em></h4>
+          <input type="range" id="fontSizeRange" min="10" max="72" value="20" />
+        </section>
+
+        <section class="panel-group panel-actions">
+          <button class="btn btn-ghost" id="btnDuplicate">复制 (Ctrl+D)</button>
+          <div class="btn-row">
+            <button class="btn btn-ghost" id="btnRaise" title="上移一层 (Ctrl+])">上移一层</button>
+            <button class="btn btn-ghost" id="btnLower" title="下移一层 (Ctrl+[)">下移一层</button>
+          </div>
+          <button class="btn btn-ghost btn-danger" id="btnDelete">删除 (Del)</button>
+          <button class="btn btn-ghost btn-danger" id="btnClear">清空画布</button>
+        </section>
+
+        <section class="panel-group">
+          <h4>画布</h4>
+          <label class="switch">
+            <input type="checkbox" id="gridToggle" checked />
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+            <span class="switch-label">显示网格</span>
+          </label>
+          <button class="btn btn-ghost" id="btnFit">适应窗口 (Shift+1)</button>
+        </section>
+      </aside>
+
+      <!-- 画布 -->
+      <main class="stage" id="stage">
+        <canvas id="canvas"></canvas>
+        <div class="text-editor" id="textEditor" hidden>
+          <textarea id="textInput" placeholder="输入文字，Esc 取消，Ctrl+Enter 确认" spellcheck="false"></textarea>
+        </div>
+        <div class="empty-hint" id="emptyHint">
+          <div class="empty-inner">
+            <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/></svg>
+            <p>在画布上随便画点什么</p>
+            <span>按 B 画笔 · R 矩形 · T 文字 · 空格拖拽平移</span>
+          </div>
+        </div>
+        <div class="status-bar" id="statusBar">
+          <span id="statusTool">选择</span>
+          <span class="dot"></span>
+          <span id="statusCount">0 个图形</span>
+          <span class="spacer"></span>
+          <span id="statusPos">x: 0  y: 0</span>
+        </div>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" hidden></div>
+
+    <!-- 关闭确认（页面内，不用原生模态框） -->
+    <div class="modal-mask" id="closeMask" hidden>
+      <div class="modal" role="dialog" aria-modal="true">
+        <h3>白板还有未保存的内容</h3>
+        <p>关闭前要先保存吗？</p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="closeCancel">取消</button>
+          <button class="btn btn-danger-ghost" id="closeDiscard">不保存</button>
+          <button class="btn btn-primary" id="closeSave" autofocus>保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="bundle.js"></script>
+</body>
+</html>
