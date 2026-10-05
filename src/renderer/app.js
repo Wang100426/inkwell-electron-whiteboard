@@ -1196,10 +1196,7 @@ window.addEventListener('keydown', (e) => {
     setTool(TOOL_KEYS[k]);
   }
   if (k === 'g' && !mod) {
-    $('gridToggle').checked = !$('gridToggle').checked;
-    renderer.options.grid = $('gridToggle').checked;
-    $('btnGrid').classList.toggle('active', renderer.options.grid);
-    requestRender();
+    setGrid(!renderer.options.grid);
   }
   // 方向键微调
   const nudge = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[e.key];
@@ -1362,18 +1359,29 @@ $('pressureMaxRange').addEventListener('input', (e) => {
   $('pressureMaxValue').textContent = state.style.pressureMax;
 });
 
-$('gridToggle').addEventListener('change', (e) => {
-  renderer.options.grid = e.target.checked;
-  $('btnGrid').classList.toggle('active', e.target.checked);
+/**
+ * 网格开关的唯一入口（1.2.0）。
+ *
+ * 原来状态源是一个隐藏的 `#gridToggle` 复选框，侧栏图标只是它的代理点击。
+ * 1.2.0 删掉了那个开关（改由左侧栏网格图标直接切换），
+ * 所以这里改成单一函数 + `renderer.options.grid` 作为唯一状态源，
+ * 图标激活态与快捷键都走它，避免出现"图标和实际状态不一致"。
+ */
+function setGrid(on) {
+  renderer.options.grid = !!on;
+  const btn = $('btnGrid');
+  // .active 让图标自身显示开关状态（图标式工具栏的通行做法）
+  if (btn) btn.classList.toggle('active', renderer.options.grid);
   requestRender();
-});
-$('btnGrid').addEventListener('click', () => $('gridToggle').click());
+}
 
 $('btnUndo').addEventListener('click', () => store.undo());
 $('btnRedo').addEventListener('click', () => store.redo());
 $('btnSave').addEventListener('click', save);
 $('btnOpen').addEventListener('click', open);
 $('btnExport').addEventListener('click', exportPNG);
+// 网格：纯图标开关，点一下翻转
+$('btnGrid').addEventListener('click', () => setGrid(!renderer.options.grid));
 $('btnZoomIn').addEventListener('click', () => {
   renderer.zoomAt(renderer.cssWidth / 2, renderer.cssHeight / 2, 1.2);
   requestRender();
@@ -1384,6 +1392,41 @@ $('btnZoomOut').addEventListener('click', () => {
 });
 $('zoomLabel').addEventListener('click', fitToContent);
 $('btnFit').addEventListener('click', fitToContent);
+
+/* ---------------- 自绘窗口控制（1.2.0 无边框标题栏） ---------------- */
+
+$('btnMinimize').addEventListener('click', () => window.inkwell.minimizeWindow());
+$('btnMaximize').addEventListener('click', () => window.inkwell.toggleMaximize());
+/*
+ * 关闭按钮：交给主进程走 mainWindow.close()，
+ * 这样"有未保存内容先弹确认框"的既有逻辑照常生效。
+ * 不要在渲染进程里直接 window.close()，那会绕过确认流程。
+ */
+$('btnWinClose').addEventListener('click', () => window.inkwell.closeWindow());
+
+/**
+ * 最大化/还原图标切换。
+ * 两个 svg 常驻 DOM，靠 `hidden` 切换（样式表首部有 [hidden]{display:none!important}，
+ * 比动态改 innerHTML 更稳，也不会触发重排闪烁）。
+ */
+function syncMaximizeIcon(isMax) {
+  const maxIco = document.querySelector('#btnMaximize .ico-max');
+  const restoreIco = document.querySelector('#btnMaximize .ico-restore');
+  if (!maxIco || !restoreIco) return;
+  maxIco.hidden = !!isMax;
+  restoreIco.hidden = !isMax;
+  $('btnMaximize').title = isMax ? '还原' : '最大化';
+  $('btnMaximize').setAttribute('aria-label', isMax ? '还原' : '最大化');
+}
+
+if (window.inkwell.onMaximizedChange) {
+  window.inkwell.onMaximizedChange(syncMaximizeIcon);
+}
+// 兜底：挂载后主动查一次，避免 did-finish-load 广播早于监听注册
+if (window.inkwell.isMaximized) {
+  window.inkwell.isMaximized().then(syncMaximizeIcon).catch(() => {});
+}
+
 $('btnDuplicate').addEventListener('click', duplicate);
 $('btnRaise').addEventListener('click', () => reorderSelection('up'));
 $('btnLower').addEventListener('click', () => reorderSelection('down'));
@@ -1428,6 +1471,8 @@ syncStyleUI();
 setTool('pen');
 updateHistoryButtons();
 updateEmptyHint();
+// 网格图标初始态必须与 renderer.options.grid 一致（默认开）
+setGrid(renderer.options.grid !== false);
 requestRender();
 
 window.addEventListener('resize', () => {
@@ -1446,12 +1491,13 @@ window.inkwell.getInfo().then((info) => {
 
 // 暴露给自动化测试 / 控制台调试使用
 window.__inkwell = {
-  version: '1.1.0',
+  version: '1.2.0',
   store,
   renderer,
   state,
   requestRender,
   setTool,
+  setGrid,
   applyErase,
   hitTest,
   boundsOf,

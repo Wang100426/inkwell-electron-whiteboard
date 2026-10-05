@@ -36,6 +36,11 @@ app.commandLine.appendSwitch('disable-software-rasterizer');
 app.commandLine.appendSwitch('no-sandbox');
 
 ipcMain.handle('app:info', () => ({ version: '1.0.0', platform: process.platform, electron: process.versions.electron }));
+/* 1.2.0 无边框窗口：渲染层会查询最大化状态，测试环境补个 stub 避免报错 */
+ipcMain.handle('window:is-maximized', () => false);
+ipcMain.on('window:minimize', () => {});
+ipcMain.on('window:maximize', () => {});
+ipcMain.on('window:close', () => {});
 
 /** 在渲染进程执行代码并返回结果，失败时抛出可读异常 */
 async function run(win, label, code) {

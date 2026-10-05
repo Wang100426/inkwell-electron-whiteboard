@@ -7,6 +7,19 @@ contextBridge.exposeInMainWorld('inkwell', {
   openFile: () => ipcRenderer.invoke('file:open'),
   exportImage: (defaultName, data) => ipcRenderer.invoke('file:exportImage', { defaultName, data }),
   getInfo: () => ipcRenderer.invoke('app:info'),
+
+  /* ---- 自绘窗口控制（1.2.0 无边框标题栏）---- */
+  minimizeWindow: () => ipcRenderer.send('window:minimize'),
+  toggleMaximize: () => ipcRenderer.send('window:maximize'),
+  // 不叫 closeWindow 而是独立命名，提醒调用方它走的是正常关闭流程（含未保存确认）
+  closeWindow: () => ipcRenderer.send('window:close'),
+  isMaximized: () => ipcRenderer.invoke('window:is-maximized'),
+  /**
+   * 主进程广播的最大化状态变化（最大化/还原/全屏进出）。
+   * 自绘的"最大化"按钮据此在「方框」和「还原」两个图标间切换。
+   */
+  onMaximizedChange: (cb) => ipcRenderer.on('window:maximized', (_e, isMax) => cb(!!isMax)),
+
   // 渲染进程自检结果回传主进程，落盘到日志
   reportHealth: (data) => ipcRenderer.send('app:health', data),
   /**

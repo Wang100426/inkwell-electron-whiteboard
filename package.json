@@ -1,6 +1,6 @@
 {
   "name": "inkwell-whiteboard",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "InkWell - 一款精致的本地白板软件",
   "main": "src/main.js",
   "author": "IT老师",
@@ -14,7 +14,7 @@
     "test:text": "electron scripts/test-text-edit.js",
     "test:pressure": "node scripts/test-pressure.js",
     "test:pressure:e2e": "electron scripts/test-pressure-e2e.js",
-    "test:all": "npm run test:pressure && npm run test:eraser && npm run test:close && npm run test:fill && npm run test:text && npm run test:edit && npm run test:realmouse && npm run test:zorder && npm run test:pressure:e2e && npm run smoke",
+    "test:all": "npm run test:pressure && npm run test:eraser && npm run test:close && npm run test:fill && npm run test:text && npm run test:edit && npm run test:realmouse && npm run test:zorder && npm run test:shell && npm run test:pressure:e2e && npm run smoke",
     "fix:sign": "node scripts/fix-wincodesign.js",
     "fix:builder": "node scripts/fix-electron-builder.js",
     "dist": "npm run build:renderer && npm run fix:sign && npm run fix:builder && electron-builder --win",
@@ -24,9 +24,11 @@
     "test:fill": "electron scripts/test-fill.js",
     "test:realmouse": "electron scripts/test-realmouse.js",
     "test:zorder": "electron scripts/test-zorder.js",
+    "test:shell": "electron scripts/test-shell.js",
     "verify:exe": "node scripts/verify-exe.js",
     "diag:view": "electron scripts/diag-userview.js",
     "diag:contrast": "electron scripts/diag-contrast2.js",
+    "diag:shell": "electron scripts/diag-shell.js",
     "inspect:asar": "node scripts/inspect-asar.js"
   },
   "devDependencies": {

@@ -8,24 +8,24 @@
 </head>
 <body>
   <div class="app">
-    <!-- 顶栏 -->
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 19l7-7 3 3-7 7-3-3z" />
-            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
-            <path d="M2 2l7.586 7.586" />
-            <circle cx="11" cy="11" r="2" />
-          </svg>
-        </div>
-        <div class="brand-text">
-          <span class="brand-name">InkWell</span>
+    <div class="workspace">
+      <!--
+        左侧栏（1.2.0）：撤掉原来的横向顶栏，所有功能竖向排成一条线，
+        从上到下依次是「应用图标 / 撤销重做 / 缩放 / 绘图工具 / 文件操作」。
+        顶部与各部分之间的空隙兼作窗口拖拽区。
+      -->
+      <aside class="rail" id="rail">
+        <!-- 顶部固定区：应用图标 / 撤销重做 / 缩放 -->
+        <div class="rail-head">
+        <!-- 应用图标 + 未命名白板文件名 -->
+        <div class="brand">
+          <div class="brand-mark" title="InkWell 白板">
+            <img src="../../assets/icon.png" alt="InkWell" />
+          </div>
           <span class="brand-sub" id="fileName">未命名白板</span>
         </div>
-      </div>
 
-      <div class="topbar-center">
+        <!-- 撤销 / 重做 -->
         <div class="seg">
           <button class="btn-icon" id="btnUndo" title="撤销 (Ctrl+Z)" aria-label="撤销">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M3.5 13a9 9 0 1 0 2.1-5.6L3 10"/></svg>
@@ -35,6 +35,7 @@
           </button>
         </div>
 
+        <!-- 缩放 -->
         <div class="seg">
           <button class="btn-icon" id="btnZoomOut" title="缩小 (Ctrl+-)" aria-label="缩小">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 12h14"/></svg>
@@ -44,31 +45,12 @@
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
         </div>
-      </div>
+        </div>
 
-      <div class="topbar-right">
-        <button class="btn" id="btnGrid" title="网格 (G)">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
-          网格
-        </button>
-        <button class="btn" id="btnExport" title="导出 PNG (Ctrl+Shift+E)">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-          导出
-        </button>
-        <button class="btn" id="btnOpen" title="打开 (Ctrl+O)">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-          打开
-        </button>
-        <button class="btn btn-primary" id="btnSave" title="保存 (Ctrl+S)">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h7V3M8 21v-6h8v6"/></svg>
-          保存
-        </button>
-      </div>
-    </header>
+        <!-- 中间滚动区：绘图工具。窗口不够高时只有这一段滚动 -->
+        <div class="rail-tools" id="railTools">
 
-    <div class="workspace">
-      <!-- 左侧工具栏 -->
-      <aside class="toolbar" id="toolbar">
+        <!-- 绘图工具 -->
         <button class="tool" data-tool="select" title="选择 (V)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l6.5 17 2.2-6.9 7.3-2.1z"/></svg>
           <span>选择</span>
@@ -115,6 +97,26 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M12 10.5V4.5a1.5 1.5 0 0 1 3 0V11"/><path d="M15 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-6-6v-3.5a1.5 1.5 0 0 1 3 0V13"/></svg>
           <span>抓手</span>
         </button>
+        </div>
+
+        <!-- 底部固定区：文件与视图操作，只有图标不配文字 -->
+        <div class="rail-actions">
+          <button class="btn-icon" id="btnGrid" title="网格 (G)" aria-label="网格">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+          </button>
+          <button class="btn-icon" id="btnFit" title="适应窗口 (Shift+1)" aria-label="适应窗口">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4"/><path d="M20 9V5a1 1 0 0 0-1-1h-4"/><path d="M4 15v4a1 1 0 0 0 1 1h4"/><path d="M20 15v4a1 1 0 0 1-1 1h-4"/></svg>
+          </button>
+          <button class="btn-icon" id="btnExport" title="导出 PNG (Ctrl+Shift+E)" aria-label="导出 PNG">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          </button>
+          <button class="btn-icon" id="btnOpen" title="打开 (Ctrl+O)" aria-label="打开">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          </button>
+          <button class="btn-icon accent" id="btnSave" title="保存 (Ctrl+S)" aria-label="保存">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h7V3M8 21v-6h8v6"/></svg>
+          </button>
+        </div>
       </aside>
 
       <!-- 属性面板 -->
@@ -173,20 +175,37 @@
           <button class="btn btn-ghost btn-danger" id="btnClear">清空画布</button>
         </section>
 
-        <section class="panel-group">
-          <h4>画布</h4>
-          <label class="switch">
-            <input type="checkbox" id="gridToggle" checked />
-            <span class="switch-track"><span class="switch-thumb"></span></span>
-            <span class="switch-label">显示网格</span>
-          </label>
-          <button class="btn btn-ghost" id="btnFit">适应窗口 (Shift+1)</button>
-        </section>
+        <!--
+          原来这里有一个「显示网格」开关。
+          1.2.0 起网格改由左侧栏的网格图标切换（工具栏式，图标本身显示开关状态），
+          开关与图标同时存在会让人搞不清哪个是主入口，故删除。
+        -->
       </aside>
 
       <!-- 画布 -->
       <main class="stage" id="stage">
         <canvas id="canvas"></canvas>
+
+        <!--
+          自绘窗口控制按钮（1.2.0，替代被隐藏的 Windows 原生标题栏）。
+          放在 stage 内右上角绝对定位：这样它只在画布区域之上，
+          不会盖住左侧栏，也不需要额外的顶层容器。
+          no-drag 必须加 —— 父级 .stage 顶部留了拖拽区，
+          按钮若不显式排除，点下去会变成拖窗口而不是点按钮。
+        -->
+        <div class="win-controls no-drag" id="winControls">
+          <button class="win-btn" id="btnMinimize" title="最小化" aria-label="最小化">
+            <svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M2.5 6h7"/></svg>
+          </button>
+          <button class="win-btn" id="btnMaximize" title="最大化" aria-label="最大化">
+            <svg class="ico-max" viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2.5" y="2.5" width="7" height="7" rx="1"/></svg>
+            <svg class="ico-restore" viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.2" hidden><rect x="2" y="3.5" width="6.5" height="6.5" rx="1"/><path d="M4.2 3.5V2.6a1 1 0 0 1 1-1h3.7a1 1 0 0 1 1 1v3.7a1 1 0 0 1-1 1h-.9"/></svg>
+          </button>
+          <button class="win-btn danger" id="btnWinClose" title="关闭" aria-label="关闭">
+            <svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+          </button>
+        </div>
+
         <div class="text-editor" id="textEditor" hidden>
           <textarea id="textInput" placeholder="输入文字，Esc 取消，Ctrl+Enter 确认" spellcheck="false"></textarea>
         </div>

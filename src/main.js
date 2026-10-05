@@ -140,6 +140,21 @@ function createWindow() {
     title: 'InkWell 白板',
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
     autoHideMenuBar: true,
+    /*
+     * 无边框窗口（1.2.0）：去掉 Windows 原生标题栏，改用页面内自绘的
+     * 左上角图标 + 右上角最小化/最大化/关闭三个按钮。
+     *
+     * 为什么不用 `frame: false` 单独一项：
+     *   纯 frame:false 在 Windows 上会让「贴边分屏（Win+方向键）」和
+     *   双击标题栏最大化等行为一起消失，需要自己从头实现。
+     *   用 `titleBarStyle: 'hidden'` + `titleBarOverlay: false` 的组合，
+     *   标题栏被隐藏但窗口仍保留原生行为，拖动/双击最大化/贴边分屏都还在，
+     *   只需要在 CSS 里给拖拽区加 `-webkit-app-region: drag`。
+     */
+    frame: false,
+    titleBarStyle: 'hidden',
+    // 关闭原生 overlay 三个按钮（我们自己画）
+    titleBarOverlay: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -153,6 +168,24 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html')).catch((e) => {
     diag('!! 页面加载失败: ' + e.message);
   });
+
+  /*
+   * 最大化状态广播给渲染进程：自绘的"最大化/还原"按钮要据此换图标。
+   * 只在状态真正变化时发，避免拖动窗口时刷屏。
+   */
+  const sendMaximized = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const isMax = mainWindow.isMaximized();
+    diag('窗口最大化状态 -> ' + isMax);
+    mainWindow.webContents.send('window:maximized', isMax);
+  };
+  mainWindow.on('maximize', sendMaximized);
+  mainWindow.on('unmaximize', sendMaximized);
+  mainWindow.on('enter-full-screen', sendMaximized);
+  mainWindow.on('leave-full-screen', sendMaximized);
+
+  // 页面加载完成后补发一次当前状态，保证首次渲染时图标就是对的
+  mainWindow.webContents.on('did-finish-load', sendMaximized);
 
   mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
     diag('!! did-fail-load ' + code + ' ' + desc + ' ' + url);
@@ -281,6 +314,38 @@ ipcMain.handle('file:exportImage', async (_e, { defaultName, data }) => {
   if (canceled || !filePath) return { ok: false, canceled: true };
   await fs.promises.writeFile(filePath, Buffer.from(data.split(',')[1], 'base64'));
   return { ok: true, filePath };
+});
+
+/* ------------------------- IPC：自绘窗口控制 ------------------------- */
+
+/**
+ * 无边框窗口的最小化/最大化/关闭。
+ *
+ * 关闭按钮**不直接调 window.close()**，而是走 mainWindow.close() ——
+ * 这样才能复用既有的「有未保存内容就弹页面内确认框」逻辑
+ * （见下面的 close 事件处理）。直接 destroy() 会绕过确认框、丢数据。
+ */
+ipcMain.on('window:minimize', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+});
+
+ipcMain.on('window:maximize', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+});
+
+ipcMain.on('window:close', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  diag('自绘关闭按钮：触发窗口关闭流程');
+  // 走正常 close 事件，未保存确认逻辑照常生效
+  mainWindow.close();
+});
+
+// 渲染进程挂载后主动查询一次最大化状态（兜底 did-finish-load 的时序）
+ipcMain.handle('window:is-maximized', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  return mainWindow.isMaximized();
 });
 
 ipcMain.handle('app:info', () => ({

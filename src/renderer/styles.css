@@ -35,8 +35,9 @@
   --radius-sm: 7px;
   --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.5);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
-  --topbar-h: 56px;
-  --tool-w: 68px;
+  /* 1.2.0：原顶部横栏已撤掉，改由左侧 .rail 承载全部功能入口。
+     --topbar-h 仅作历史保留（窗口顶部无元素再用到它）。 */
+  --tool-w: 74px;
   --panel-w: 232px;
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
 }
@@ -79,79 +80,248 @@ body {
   background: #3a4252;
 }
 
+/*
+ * 1.2.0：顶栏撤掉后 .app 不再需要纵向布局，
+ * 但保留 flex 列方向不影响（workspace 是唯一子元素，flex:1 撑满）。
+ */
 .app {
   display: flex;
   flex-direction: column;
   height: 100vh;
 }
 
-/* -------------------- 顶栏 -------------------- */
+/* -------------------- 左侧栏（1.2.0：代替原顶部横栏） -------------------- */
 
-.topbar {
-  height: var(--topbar-h);
+/*
+ * 原顶栏（56px）已撤掉：窗口改用无边框 + 页面内自绘按钮，
+ * 所有功能竖向排在左侧一条 68px 宽的窄栏里。
+ *
+ * 拖拽区：整条 rail 默认可拖（-webkit-app-region: drag），
+ * 但**所有按钮必须显式 no-drag** —— 否则点按钮会变成拖窗口。
+ * 这里用「父级 no-drag + 每个交互元素 no-drag」的保守写法，
+ * 拖拽只落在留白处（rail 顶部的品牌行、各分隔块之间）。
+ */
+.rail {
+  width: var(--tool-w);
   flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 14px 0 16px;
   background: var(--bg-elev);
-  border-bottom: 1px solid var(--border);
-  z-index: 20;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 190px;
-}
-
-.brand-mark {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border-radius: 9px;
-  background: linear-gradient(135deg, #4c8dff, #7b5cff);
-  color: #fff;
-  box-shadow: 0 4px 14px rgba(76, 141, 255, 0.35);
-}
-
-.brand-text {
+  border-right: 1px solid var(--border);
+  /*
+   * 1.2.0 踩坑：rail 里现在塞了「图标 + 撤销重做 + 缩放 + 11 个工具 + 文件操作」，
+   * 内容总高超过 900px 窗口的可视高度时，底部的网格/导出/打开/保存
+   * 会被挤出视口（实测 btnGrid 落在 y=936、btnSave 落在 y=1084，窗口只有 886 高），
+   * 表现为"这几个按钮完全点不到"。
+   *
+   * 处理：分三段纵向布局 + 中间工具区独立滚动。
+   *   .rail-head（图标/撤销/缩放）  固定，不滚
+   *   .rail-tools（工具区）          flex:1 + overflow-y:auto，唯一滚动区
+   *   .rail-actions（文件操作）      固定贴底，永远可见
+   * 这样任何窗口高度下，文件操作都不会被挤出去。
+   */
+  padding: 0;
   display: flex;
   flex-direction: column;
-  line-height: 1.25;
+  align-items: center;
+  overflow: hidden;
+  z-index: 15;
+  -webkit-app-region: drag;
 }
 
-.brand-name {
-  font-size: 13.5px;
-  font-weight: 650;
-  letter-spacing: 0.2px;
+/* 交互元素一律排除出拖拽区。
+   svg 子元素也要逐个声明 —— 漏掉时，光标落在图标线条上仍会被判为拖拽，
+   表现为"点图标没反应，只是在拖窗口"。 */
+.rail button,
+.rail button svg,
+.rail input,
+.rail .seg,
+.rail .rail-actions {
+  -webkit-app-region: no-drag;
 }
 
-.brand-sub {
-  font-size: 11px;
+/* 顶部分组：图标 / 撤销重做 / 缩放。固定不滚动 */
+.rail-head {
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 8px 8px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* 中间分组：绘图工具。唯一可滚动段，窗口不够高时只滚这里 */
+.rail-tools {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 滚动条太窄会挤歪 40px 宽的图标，这里让它浮在内容上不占位 */
+  scrollbar-width: thin;
+}
+
+/* 底部分组：文件与视图操作。固定贴底，任何窗口高度都可见 */
+.rail-actions {
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 6px 8px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.rail .brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  padding: 4px 0 8px;
+}
+
+/*
+ * 应用图标：用打包进 assets/icon.png 的成品图，
+ * 不再用内联 SVG 凑一个"假 logo"（1.2.0 修正）。
+ */
+.rail .brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.rail .brand-mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  /* 图标本身是圆角方形，直接铺满即可 */
+  border-radius: 9px;
+}
+
+.rail .brand-sub {
+  font-size: 9.5px;
+  line-height: 1.2;
   color: var(--text-mute);
-  max-width: 150px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: center;
 }
 
-.topbar-center {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+/* 竖向的分隔线（原顶栏里是横向排版，这里换成竖向块之间的细线） */
+.rail-sep {
+  width: 30px;
+  height: 1px;
+  background: var(--border);
+  margin: 7px 0;
+  flex: 0 0 auto;
 }
 
-.topbar-right {
+/* rail 里的撤销/缩放分组：竖着堆叠，宽度撑满窄栏 */
+.rail .seg {
+  flex-direction: column;
+  width: 100%;
+  gap: 1px;
+  padding: 3px;
+}
+
+.rail .seg .btn-icon {
+  width: 100%;
+  height: 28px;
+}
+
+.rail .seg .zoom-label {
+  width: 100%;
+  min-width: 0;
+  font-size: 11px;
+}
+
+/* 文件/视图操作图标组：竖向排列（容器样式见上方的 .rail-actions） */
+.rail-actions .btn-icon {
+  width: 40px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+}
+
+/* 保存是主操作，给个强调色 */
+.rail-actions .btn-icon.accent {
+  color: var(--accent);
+}
+
+.rail-actions .btn-icon.accent:hover {
+  background: var(--accent-soft);
+  color: #9cc0ff;
+}
+
+/* 网格图标激活态（对应 renderer.options.grid） */
+.rail-actions .btn-icon.active {
+  background: var(--accent-soft);
+  color: #9cc0ff;
+}
+
+/* -------------------- 自绘窗口控制按钮 -------------------- */
+
+.win-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
   display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 190px;
-  justify-content: flex-end;
+  align-items: flex-start;
+  z-index: 40;
+  /* 容器与每个按钮都要显式 no-drag：
+     Chromium 里 drag 区域的判定不总是被后代的 no-drag 覆盖，
+     尤其是按钮内部还有 svg 子元素时。逐个声明最稳。 */
+  -webkit-app-region: no-drag;
+}
+
+.win-controls .win-btn,
+.win-controls .win-btn svg {
+  -webkit-app-region: no-drag;
+}
+
+.win-btn {
+  width: 46px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: background 0.14s, color 0.14s;
+}
+
+.win-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.win-btn:active {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+/* 关闭按钮：Windows 惯例是 hover 变红 */
+.win-btn.danger:hover {
+  background: #e81123;
+  color: #fff;
+}
+
+.win-btn.danger:active {
+  background: #c50f1f;
 }
 
 /* 按钮 */
@@ -273,20 +443,12 @@ body {
   min-height: 0;
 }
 
-/* 工具栏 */
-
-.toolbar {
-  width: var(--tool-w);
-  flex: 0 0 auto;
-  background: var(--bg-elev);
-  border-right: 1px solid var(--border);
-  padding: 10px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  overflow-y: auto;
-  z-index: 15;
-}
+/* 工具栏
+ *
+ * 注意：原来的 `.toolbar` 容器（独立 68px 左侧栏）在 1.2.0 已合并进
+ * `.rail`（见文件上方），这里只保留 `.tool` 按钮本身的样式。
+ * 误删 `.tool` 的样式会让所有绘图工具按钮变成无样式的裸按钮。
+ */
 
 .tool {
   display: flex;
@@ -897,9 +1059,5 @@ input[type='range']::-webkit-slider-thumb:active {
 @media (max-width: 1100px) {
   .panel {
     width: 200px;
-  }
-  .brand,
-  .topbar-right {
-    min-width: auto;
   }
 }
