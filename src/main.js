@@ -279,10 +279,13 @@ app.on('window-all-closed', () => {
 ipcMain.handle('file:save', async (_e, { defaultName, data }) => {
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
     title: '保存白板',
-    defaultPath: path.join(app.getPath('documents'), defaultName || 'untitled.inkwell.json'),
+    /*
+     * 1.3.0 起统一用 .inkwell 扩展名。
+     * 默认文件名由渲染层给（带去扩展名），这里只兜底。
+     */
+    defaultPath: path.join(app.getPath('documents'), defaultName || '未命名白板.inkwell'),
     filters: [
       { name: 'InkWell 白板', extensions: ['inkwell'] },
-      { name: 'JSON', extensions: ['json'] },
     ],
   });
   if (canceled || !filePath) return { ok: false, canceled: true };
@@ -295,7 +298,13 @@ ipcMain.handle('file:open', async () => {
     title: '打开白板',
     properties: ['openFile'],
     filters: [
-      { name: 'InkWell 白板', extensions: ['inkwell', 'json'] },
+      { name: 'InkWell 白板', extensions: ['inkwell'] },
+      /*
+       * 兼容旧文件：1.2.x 及更早版本存的是 .inkwell.json / .json。
+       * 把它们放进过滤器，用户的老白板仍然点得到；
+       * 保存时会一律另存为 .inkwell，逐步收拢到统一格式。
+       */
+      { name: '旧版白板 (.json)', extensions: ['json'] },
       { name: '所有文件', extensions: ['*'] },
     ],
   });

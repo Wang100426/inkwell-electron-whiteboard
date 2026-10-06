@@ -2,7 +2,7 @@
 
 const { readPressure, pressureToWidth } = require('./geometry');
 
-const { BoardStore, BoardRenderer, hitTest, boundsOf, makeBase, TransformShapesCommand, snapshot, FILLABLE_TYPES, NOTE_W, NOTE_H, reorderIds } = require('./board');
+const { BoardStore, BoardRenderer, hitTest, boundsOf, makeBase, TransformShapesCommand, snapshot, FILLABLE_TYPES, NOTE_W, NOTE_H, reorderIds, INKWELL_APP_VERSION, canOpenFileVersion } = require('./board');
 const { applyErase } = require('./eraser');
 
 /* ============================ DOM ============================ */
@@ -15,6 +15,14 @@ const renderer = new BoardRenderer(canvas);
 
 const state = {
   tool: 'pen',
+  // 当前分组（select / draw / shape / text），由 setTool 维护
+  toolGroup: 'draw',
+  /*
+   * 每个分组"上一次选的具体工具"。
+   * 作用：子弹层里选了「椭圆」后，下次再点「图形」主按钮
+   * 直接回到椭圆，而不是永远回到矩形。
+   */
+  groupPick: { draw: 'pen', shape: 'rect', text: 'text' },
   style: {
     color: '#e8ecf4',
     // 填充色由「填充」工具使用；新图形一律无填充（见 makeBase）
@@ -42,6 +50,77 @@ const TOOL_NAMES = {
   select: '选择', pen: '画笔', eraser: '橡皮', fill: '填充', rect: '矩形',
   ellipse: '椭圆', line: '直线', arrow: '箭头', text: '文字', note: '便签', hand: '抓手',
 };
+
+/**
+ * 左侧栏的四个分组（1.3.0）。
+ *
+ * 每个分组对应一个主按钮；带多个工具的分组点开后弹子弹层。
+ * 图标 SVG 抽成字符串存在这里，既用于子弹层，也用于主按钮切换"当前工具面貌"。
+ *
+ * 注意：分组只是**入口的收纳方式**，底层工具类型没变
+ * （setTool 仍然收到 pen / rect / note 这些具体工具名），
+ * 快捷键、状态栏、面板逻辑都照旧按具体工具工作。
+ */
+const TOOL_ICONS = {
+  select: '<path d="M5 3l6.5 17 2.2-6.9 7.3-2.1z"/>',
+  pen: '<path d="M4 20l4-1 10-10-3-3L5 16z"/><path d="M14 5l3 3"/>',
+  eraser: '<path d="M4 15l7-7 6 6-4 4H7z"/><path d="M20 20h-9"/>',
+  hand: '<path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M12 10.5V4.5a1.5 1.5 0 0 1 3 0V11"/><path d="M15 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-6-6v-3.5a1.5 1.5 0 0 1 3 0V13"/>',
+  fill: '<path d="M8.5 3.5l8 8a1.4 1.4 0 010 2l-4.4 4.4a1.4 1.4 0 01-2 0L4 12l4.5-8.5z"/><path d="M4.6 11.6h11"/><path d="M19.5 15c1.1 1.4 1.7 2.3 1.7 3a1.7 1.7 0 11-3.4 0c0-.7.6-1.6 1.7-3z"/>',
+  rect: '<rect x="4" y="6" width="16" height="12" rx="2"/>',
+  ellipse: '<ellipse cx="12" cy="12" rx="8" ry="6.5"/>',
+  line: '<path d="M5 19L19 5"/>',
+  arrow: '<path d="M5 19L19 5"/><path d="M12 5h7v7"/>',
+  text: '<path d="M5 6V4h14v2"/><path d="M12 4v16M9 20h6"/>',
+  note: '<path d="M5 4h14v10l-5 6H5z"/><path d="M19 14h-5v6"/>',
+};
+
+/** 每个图标是否需要描边端点圆角（笔画类需要，几何图形不需要） */
+const TOOL_ICON_JOIN = { rect: '', ellipse: '', };
+
+const TOOL_GROUPS = {
+  select: { label: '选择', tools: [] },
+  draw: {
+    label: '自由绘画',
+    tools: [
+      { tool: 'pen', label: '画笔', key: 'B' },
+      { tool: 'eraser', label: '橡皮', key: 'E' },
+      { tool: 'hand', label: '抓手', key: 'H' },
+    ],
+  },
+  shape: {
+    label: '图形',
+    tools: [
+      { tool: 'rect', label: '矩形', key: 'R' },
+      { tool: 'ellipse', label: '椭圆', key: 'O' },
+      { tool: 'line', label: '直线', key: 'L' },
+      { tool: 'arrow', label: '箭头', key: 'A' },
+      { tool: 'fill', label: '填充', key: 'F' },
+    ],
+  },
+  text: {
+    label: '文本',
+    tools: [
+      { tool: 'text', label: '文本', key: 'T' },
+      { tool: 'note', label: '便签', key: 'N' },
+    ],
+  },
+};
+
+/** 具体工具 → 所属分组 */
+const TOOL_TO_GROUP = (() => {
+  const m = { select: 'select' };
+  Object.keys(TOOL_GROUPS).forEach((g) => {
+    TOOL_GROUPS[g].tools.forEach((t) => { m[t.tool] = g; });
+  });
+  return m;
+})();
+
+/** 生成一个工具图标的 svg（子弹层与主按钮共用） */
+function toolIconSvg(tool, size) {
+  const s = size || 18;
+  return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${TOOL_ICONS[tool] || ''}</svg>`;
+}
 
 const PALETTE = [
   '#ffffff', '#e8ecf4', '#9aa4b5', '#5b6472', '#3a4150', '#232834',
@@ -194,20 +273,73 @@ function updateEmptyHint() {
 
 function setTool(tool) {
   state.tool = tool;
-  document.querySelectorAll('.tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === tool));
+  const group = TOOL_TO_GROUP[tool] || 'draw';
+  state.toolGroup = group;
+
+  /*
+   * 主按钮高亮：按"所属分组"而不是"具体工具"。
+   * 例如选中「椭圆」时，高亮的是「图形」按钮 —— 因为用户点的是那个入口，
+   * 具体是组内哪一个由按钮上的图标体现。
+   */
+  document.querySelectorAll('.rail-tools .tool').forEach((b) => {
+    b.classList.toggle('active', b.dataset.group === group);
+  });
+
+  /*
+   * 主按钮的"局面图标"要换成组内当前工具：
+   * 选了橡皮后，绘画按钮显示橡皮图标，一眼看出当前状态。
+   * 如果用户手动选过（记住偏好），就用记住的那个。
+   */
+  syncGroupFaces();
+  closeFlyout();
+
   stage.className = 'stage tool-' + tool;
   $('statusTool').textContent = TOOL_NAMES[tool] || tool;
-  trace('setTool -> ' + tool);
+  trace('setTool -> ' + tool + ' (分组 ' + group + ')');
+
   // 面板按工具显示相关项
-  // 填充工具复用画笔调色板：选中它时色板改的是「填充色」，而非描边色
-  $('btnNoFill').hidden = tool !== 'fill';
-  $('colorLabel').textContent = tool === 'fill' ? '填充色' : '颜色';
-  $('textGroup').hidden = tool !== 'text';
+  const isFill = tool === 'fill';
+  $('btnNoFill').hidden = !isFill;
+  $('colorLabel').textContent = isFill ? '填充色' : '颜色';
+  $('textGroup').hidden = !['text', 'note'].includes(tool);
   // 压感只对绘画类工具有意义
   $('pressureGroup').hidden = !['pen', 'eraser'].includes(tool);
+  // 选择工具下不显示描边/线宽这类"画新东西"的设置
+  const isSelect = tool === 'select';
+  $('selectGroup').hidden = !isSelect;
+  $('colorGroup').hidden = isSelect;
+  $('widthGroup').hidden = isSelect || ['text', 'note'].includes(tool);
+  $('opacityGroup').hidden = isSelect;
+
+  // 面板头部：显示当前分组名
+  const head = $('panelHeadName');
+  const icon = $('panelHeadIcon');
+  if (head) head.textContent = TOOL_GROUPS[group] ? TOOL_GROUPS[group].label : '';
+  if (icon) icon.innerHTML = toolIconSvg(tool, 15);
+
   if (tool !== 'select') clearSelection();
   syncStyleUI();
   requestRender();
+}
+
+/**
+ * 刷新主按钮的"当前工具面貌"。
+ * 组内工具的图标直接替换主按钮里的 .tool-face 内容。
+ */
+function syncGroupFaces() {
+  document.querySelectorAll('.rail-tools .tool[data-group]').forEach((btn) => {
+    const g = btn.dataset.group;
+    const face = btn.querySelector('.tool-face');
+    if (!face) return;
+    // 选择组只有一个工具，固定即可
+    const cur = g === 'select' ? 'select' : (state.groupPick[g] || TOOL_GROUPS[g].tools[0].tool);
+    face.innerHTML = toolIconSvg(cur, 19);
+    // 同步主按钮 tooltip 里的当前工具名
+    if (g !== 'select') {
+      const meta = TOOL_GROUPS[g].tools.find((t) => t.tool === cur);
+      if (meta) btn.title = `${TOOL_GROUPS[g].label}：${meta.label} (${meta.key})`;
+    }
+  });
 }
 
 function buildSwatches() {
@@ -1015,7 +1147,13 @@ async function save() {
     toast('画布是空的，没什么可存的', true);
     return false;
   }
-  const defaultName = (state.filePath ? state.filePath.split(/[\\/]/).pop() : '未命名白板') + '.inkwell.json';
+  /*
+   * 1.3.0 起统一 .inkwell。
+   * 若当前文件是旧的 .json，保存时换成 .inkwell（相当于"另存为"），
+   * 避免继续往旧扩展名里写。
+   */
+  const base = state.filePath ? state.filePath.split(/[\\/]/).pop() : '未命名白板';
+  const defaultName = base.replace(/\.inkwell\.json$|\.json$|\.inkwell$/i, '') + '.inkwell';
   const res = await window.inkwell.saveFile(defaultName, JSON.stringify(store.toJSON(), null, 2));
   if (res.ok) {
     state.filePath = res.filePath;
@@ -1033,7 +1171,15 @@ async function open() {
   const res = await window.inkwell.openFile();
   if (!res.ok) return;
   try {
-    store.loadJSON(res.data);
+    // 版本门槛：比本应用主版本号更高的文件，明确拒绝并说明原因
+    const out = store.loadJSON(res.data, INKWELL_APP_VERSION);
+    if (!out.ok) {
+      toast(
+        `该白板由更高版本 (${out.fileVersion}) 创建，当前版本 ${out.currentVersion} 无法打开`,
+        true
+      );
+      return; // 画布保持原样，不做任何修改
+    }
     store.history.clear();
     state.filePath = res.filePath;
     state.dirty = false;
@@ -1320,7 +1466,105 @@ function reorderSelection(mode) {
 
 /* ============================ 事件绑定 ============================ */
 
-document.querySelectorAll('.tool').forEach((b) => b.addEventListener('click', () => setTool(b.dataset.tool)));
+/* ---------------- 左侧栏：分组按钮 + 子弹层（1.3.0） ---------------- */
+
+/** 当前子弹层展现的分组，null 表示未打开 */
+let flyoutGroup = null;
+
+/**
+ * 打开某个分组的子弹层。
+ * 子弹层用绝对定位飘在 rail 右侧（见 styles.css），
+ * 所以这里只需要填内容 + 去掉 hidden。
+ */
+function openFlyout(group) {
+  const g = TOOL_GROUPS[group];
+  if (!g || !g.tools.length) return;
+  flyoutGroup = group;
+  $('flyoutTitle').textContent = g.label;
+  const wrap = $('flyoutItems');
+  wrap.innerHTML = '';
+  g.tools.forEach((t) => {
+    const b = document.createElement('button');
+    b.className = 'flyout-item';
+    b.dataset.tool = t.tool;
+    // 当前工具高亮
+    if (state.tool === t.tool) b.classList.add('active');
+    b.innerHTML = `${toolIconSvg(t.tool, 17)}<span class="fi-label">${t.label}</span><span class="fi-key">${t.key}</span>`;
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // 记住这个分组选了谁，下次点主按钮直接回到它
+      state.groupPick[group] = t.tool;
+      setTool(t.tool);
+    });
+    wrap.appendChild(b);
+  });
+
+  // 定位到主按钮旁边
+  const btn = document.querySelector(`.rail-tools .tool[data-group="${group}"]`);
+  const fl = $('flyout');
+  fl.hidden = false;
+  if (btn) {
+    const rb = btn.getBoundingClientRect();
+    const rl = $('rail').getBoundingClientRect();
+    // 顶到按钮上沿对齐，但不要超出视口底部
+    const top = Math.min(rb.top, window.innerHeight - fl.offsetHeight - 10);
+    fl.style.top = Math.max(8, top) + 'px';
+    fl.style.left = (rl.right + 6) + 'px';
+  }
+  // 高亮当前打开的分组按钮（即使工具没变）
+  document.querySelectorAll('.rail-tools .tool').forEach((b) => {
+    b.classList.toggle('open', b.dataset.group === group);
+  });
+}
+
+function closeFlyout() {
+  flyoutGroup = null;
+  const fl = $('flyout');
+  if (fl) fl.hidden = true;
+  document.querySelectorAll('.rail-tools .tool').forEach((b) => b.classList.remove('open'));
+}
+
+/**
+ * 分组按钮点击策略：
+ *  - 单工具分组（选择）：直接切
+ *  - 多工具分组：已在该分组 → 开关子弹层；不在 → 先切到"记住的工具"并打开子弹层
+ *
+ * 为什么不在第一次点击时就直接切工具：用户点「图形」的意图通常是
+ * "我要画图形，让我选个形状"。直接给矩形也行，但打开子弹层更符合预期，
+ * 而且能立刻看到组里还有什么。工具同时已切好，不打开子弹层也能直接画。
+ */
+document.querySelectorAll('.rail-tools .tool').forEach((btn) => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const group = btn.dataset.group;
+    const g = TOOL_GROUPS[group];
+    if (!g) return;
+
+    if (!g.tools.length) {           // 单工具：选择
+      setTool(group);
+      return;
+    }
+    if (flyoutGroup === group) {     // 再点一下收起
+      closeFlyout();
+      return;
+    }
+    // 切到记住的工具（若已在组内则保持当前具体工具）
+    const pick = TOOL_TO_GROUP[state.tool] === group ? state.tool : (state.groupPick[group] || g.tools[0].tool);
+    state.groupPick[group] = pick;
+    setTool(pick);                   // setTool 内部会 closeFlyout
+    openFlyout(group);               // 再打开子弹层
+  });
+});
+
+// 点其他地方/按 Esc 收起子弹层
+document.addEventListener('click', () => { if (flyoutGroup) closeFlyout(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && flyoutGroup) { closeFlyout(); e.stopPropagation(); }
+}, true);
+$('flyout').addEventListener('click', (e) => e.stopPropagation());
+// 滚动时子弹层会错位，直接收起
+$('railTools').addEventListener('scroll', () => { if (flyoutGroup) closeFlyout(); });
+window.addEventListener('resize', () => { if (flyoutGroup) closeFlyout(); });
 
 $('colorPicker').addEventListener('input', (e) => {
   if (state.tool === 'fill') {
@@ -1491,7 +1735,7 @@ window.inkwell.getInfo().then((info) => {
 
 // 暴露给自动化测试 / 控制台调试使用
 window.__inkwell = {
-  version: '1.2.0',
+  version: '1.3.0',
   store,
   renderer,
   state,

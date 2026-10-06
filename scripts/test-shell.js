@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * 回归测试：1.2.0 无边框窗口 + 左侧栏重排。
+ * 回归测试：1.3.0 无边框窗口 + 左侧栏精简为四个分组。
  *
  * 覆盖：
  *   A. 主进程窗口配置（无边框、标题栏隐藏、overlay 关闭）
@@ -11,6 +11,8 @@
  *   E. 网格图标是唯一开关源，点击/快捷键能正确翻转状态
  *   F. 应用图标用的是 assets/icon.png（不再是无意义的内联 SVG）
  *   G. 拖拽区正确：rail 可拖，但按钮全部 no-drag
+ *   H. 滚动条风格统一（全局唯一定义，两处颜色一致）
+ *   I. 四个分组按钮 + 子弹层选具体工具（1.3.0 精简）
  *
  * 用法：env -u ELECTRON_RUN_AS_NODE npx electron scripts/test-shell.js
  *      （或 npm run test:shell）
@@ -28,7 +30,7 @@ app.commandLine.appendSwitch('no-sandbox');
 
 const ROOT = path.join(__dirname, '..');
 
-ipcMain.handle('app:info', () => ({ version: '1.2.0', platform: process.platform, electron: process.versions.electron }));
+ipcMain.handle('app:info', () => ({ version: '1.3.0', platform: process.platform, electron: process.versions.electron }));
 ipcMain.handle('file:save', () => ({ ok: false }));
 ipcMain.on('app:health', () => {});
 ipcMain.on('app:trace', () => {});
@@ -113,6 +115,12 @@ app.whenReady().then(async () => {
         open: inRail('btnOpen'), save: inRail('btnSave'), fit: inRail('btnFit'),
       },
       toolCount: document.querySelectorAll('.rail .tool').length,
+      // 1.3.0：左侧栏精简为 4 个分组按钮
+      groups: Array.from(document.querySelectorAll('.rail .tool.tool-group')).map((el) => el.getAttribute('data-group')),
+      groupedCount: document.querySelectorAll('.rail .tool.tool-group').length,
+      legacyToolCount: document.querySelectorAll('.rail .tool:not(.tool-group)').length,
+      hasFlyout: !!q('flyout'),
+      flyoutHidden: !!(q('flyout') && q('flyout').hidden),
       // 自绘窗口按钮
       winBtns: {
         min: !!q('btnMinimize'), max: !!q('btnMaximize'), close: !!q('btnWinClose'),
@@ -146,13 +154,20 @@ app.whenReady().then(async () => {
   check('打开在左侧栏内', dom.railKids.open);
   check('保存在左侧栏内', dom.railKids.save);
   check('适应窗口在左侧栏内', dom.railKids.fit);
-  check('11 个绘图工具都在', dom.toolCount === 11, dom.toolCount);
+  check('左侧栏精简为 4 个分组按钮', dom.toolCount === 4, dom.toolCount);
+  check('分组按钮不再有散落的独立工具', dom.legacyToolCount === 0, dom.legacyToolCount);
+  check(
+    '四个分组 = 选择/绘画/图形/文本',
+    ['select', 'draw', 'shape', 'text'].every((g) => dom.groups.includes(g)) && dom.groupedCount === 4,
+    dom.groups
+  );
+  check('子弹层容器存在且默认隐藏', dom.hasFlyout && dom.flyoutHidden);
 
   check('自绘三个窗口按钮存在', dom.winBtns.min && dom.winBtns.max && dom.winBtns.close);
   check('窗口按钮位于 stage 内', dom.winBtns.inStage);
   check('preload 提供 minimizeWindow', dom.winBtns.minimizeCalled);
   check('旧 gridToggle 开关已删除', dom.gridToggleGone);
-  check('版本号已升到 1.2.0', dom.version === '1.2.0', dom.version);
+  check('版本号已升到 1.3.0', dom.version === '1.3.0', dom.version);
 
   check('应用图标用 assets/icon.png', dom.brandImg && /icon\.png$/.test(dom.brandImg.src), dom.brandImg);
   check('图标资源实际加载成功', dom.brandImg && dom.brandImg.natural > 0, dom.brandImg && dom.brandImg.natural);
@@ -235,6 +250,118 @@ app.whenReady().then(async () => {
   check('翻转后图标 active 同步关闭', grid.activeAfterClick === false);
   check('setGrid(true) 生效且图标同步', grid.afterSetTrue === true && grid.activeAfterSetTrue === true);
   check('setGrid(false) 生效且图标同步', grid.afterSetFalse === false && grid.activeAfterSetFalse === false);
+
+  /* ---------- I. 分组按钮 + 子弹层（1.3.0 左侧栏精简） ---------- */
+  /*
+   * 左侧栏从 11 个平铺工具精简为 4 个分组按钮，多工具分组靠子弹层选具体工具。
+   * 这里走真实 DOM 点击，验证：
+   *   1. 单工具分组（选择）直接切，不弹子弹层
+   *   2. 多工具分组点击后子弹层打开、列出组内全部工具、按钮高亮 .open
+   *   3. 选中子弹层里的项 → 工具切换 + 记住选择 + 子弹层收起
+   *   4. 再点主按钮 → 回到"记住的工具"
+   *   5. Esc / 点空白处收起
+   */
+  const groupBtn = (g) => `document.querySelector('.rail-tools .tool[data-group="${g}"]')`;
+  const flyoutOpen = `!document.getElementById('flyout').hidden`;
+  const flyoutTools = `Array.from(document.querySelectorAll('#flyoutItems .flyout-item')).map(b => b.dataset.tool)`;
+  const toolState = `window.__inkwell.renderer.tool || window.__inkwell.state && window.__inkwell.state.tool`;
+
+  // 1) 单工具分组：选择
+  const sel = await evalJs(`
+    const out = {};
+    ${groupBtn('select')}.click();
+    out.openAfterSelect = ${flyoutOpen};
+    out.tool = window.__inkwell.state.tool;
+    return out;
+  `);
+  check('点「选择」直接切工具，不弹子弹层', sel.tool === 'select' && sel.openAfterSelect === false, sel);
+
+  // 2) 多工具分组：图形
+  const g1 = await evalJs(`
+    const out = {};
+    ${groupBtn('shape')}.click();
+    out.open = ${flyoutOpen};
+    out.items = ${flyoutTools};
+    out.btnOpen = ${groupBtn('shape')}.classList.contains('open');
+    out.title = document.getElementById('flyoutTitle').textContent;
+    out.tool = window.__inkwell.state.tool;
+    return out;
+  `);
+  check('点「图形」打开子弹层', g1.open === true, g1);
+  check('子弹层列出组内 5 个工具', g1.items.length === 5, g1.items);
+  check(
+    '子弹层含 矩形/椭圆/直线/箭头/填充',
+    ['rect', 'ellipse', 'line', 'arrow', 'fill'].every((t) => g1.items.includes(t)),
+    g1.items
+  );
+  check('子弹层标题 = 图形', g1.title === '图形', g1.title);
+  check('主按钮标记 .open', g1.btnOpen === true);
+  check('打开的同时工具已切到组内工具', g1.tool === 'rect', g1.tool);
+
+  // 3) 选子弹层里的「椭圆」
+  const g2 = await evalJs(`
+    const out = {};
+    document.querySelector('#flyoutItems .flyout-item[data-tool="ellipse"]').click();
+    out.tool = window.__inkwell.state.tool;
+    out.open = ${flyoutOpen};
+    out.btnOpen = ${groupBtn('shape')}.classList.contains('open');
+    return out;
+  `);
+  check('选子弹层项后工具切到椭圆', g2.tool === 'ellipse', g2.tool);
+  check('选完子弹层自动收起', g2.open === false);
+  check('收起后主按钮 .open 移除', g2.btnOpen === false);
+
+  // 4) 再点主按钮 → 记住的是椭圆
+  const g3 = await evalJs(`
+    const out = {};
+    ${groupBtn('shape')}.click();
+    out.tool = window.__inkwell.state.tool;
+    out.open = ${flyoutOpen};
+    return out;
+  `);
+  check('再点「图形」回到上次选的椭圆', g3.tool === 'ellipse', g3.tool);
+  check('并重新打开子弹层', g3.open === true);
+
+  // 5) 子弹层里当前工具应有 .active 高亮
+  const g4 = await evalJs(`
+    return document.querySelector('#flyoutItems .flyout-item[data-tool="ellipse"]').classList.contains('active');
+  `);
+  check('子弹层内当前工具高亮 .active', g4 === true);
+
+  // 6) Esc 收起
+  const g5 = await evalJs(`
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    return ${flyoutOpen};
+  `);
+  check('Esc 收起子弹层', g5 === false);
+
+  // 7) 文本分组：文本 / 便签
+  const g6 = await evalJs(`
+    const out = {};
+    ${groupBtn('text')}.click();
+    out.items = ${flyoutTools};
+    out.tool = window.__inkwell.state.tool;
+    // 点空白处收起
+    document.body.click();
+    out.openAfterOutside = ${flyoutOpen};
+    return out;
+  `);
+  check('文本分组含 文本/便签', g6.items.length === 2 && g6.items.includes('text') && g6.items.includes('note'), g6.items);
+  check('文本分组默认切到文本工具', g6.tool === 'text', g6.tool);
+  check('点空白处收起子弹层', g6.openAfterOutside === false);
+
+  // 8) 自由绘画分组：画笔 / 橡皮 / 抓手
+  const g7 = await evalJs(`
+    ${groupBtn('draw')}.click();
+    return ${flyoutTools};
+  `);
+  check('绘画分组含 画笔/橡皮/抓手',
+    g7 && g7.length === 3 && ['pen', 'eraser', 'hand'].every((t) => g7.includes(t)),
+    g7
+  );
+
+  // 收尾：切回矩形，避免影响后续断言
+  await evalJs(`document.getElementById('flyout').hidden = true; window.__inkwell.setTool('rect'); return 1;`);
 
   /* ---------- B. 点击真实按钮是否触发 IPC ---------- */
   await evalJs(`document.getElementById('btnMinimize').click(); return 1;`);

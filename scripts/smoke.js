@@ -82,15 +82,20 @@ app.whenReady().then(async () => {
     const probe = await run(win, 'DOM 探针', `
       return {
         hasCanvas: !!document.getElementById('canvas'),
-        toolCount: document.querySelectorAll('.tool').length,
+        toolCount: document.querySelectorAll('.rail-tools .tool').length,
+        flyoutCount: document.querySelectorAll('.rail .flyout').length,
         swatchCount: document.querySelectorAll('.swatch').length,
         engineReady: typeof window.__inkwell === 'object' && !!window.__inkwell.store,
         canvasW: document.getElementById('canvas').width,
-        activeTool: document.querySelector('.tool.active') ? document.querySelector('.tool.active').dataset.tool : null,
+        activeTool: window.__inkwell.state.tool,
+        activeGroup: document.querySelector('.rail-tools .tool.active')
+          ? document.querySelector('.rail-tools .tool.active').dataset.group : null,
       };
     `);
     log('DOM 探针: ' + JSON.stringify(probe));
-    if (!probe.hasCanvas || probe.toolCount !== 11 || !probe.engineReady) throw new Error('DOM/引擎探针未通过');
+    if (!probe.hasCanvas || probe.toolCount !== 4 || probe.flyoutCount !== 1 || !probe.engineReady) {
+      throw new Error('DOM/引擎探针未通过');
+    }
 
     /* ---------- 2. 模拟绘制 ---------- */
     const paint = await run(win, '绘制探针', `

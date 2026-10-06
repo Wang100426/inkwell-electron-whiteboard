@@ -29,6 +29,69 @@ const NOTE_H = 160;
 /** 支持填充的图形类型（便签固定色，线/箭头/笔迹无可填区域） */
 const FILLABLE_TYPES = ['rect', 'ellipse'];
 
+/* ============================ 文件版本 ============================ */
+
+/**
+ * 写出文件时写入的应用版本号。
+ *
+ * 注意与 package.json 的 version 保持同步 —— 这里是渲染层（bundle 内），
+ * 拿不到 package.json，所以硬编码。改版本号时两处都要改。
+ * （主进程的 app.getVersion() 读的是 package.json，是权威值；
+ *  这个常量只用于写进文件，供**旧版本应用**判断能否打开。）
+ */
+const INKWELL_APP_VERSION = '1.3.0';
+
+/** 图形结构版本：字段发生不兼容变更时才 +1 */
+const SHAPES_VERSION = 1;
+
+/** 解析 "1.3.0" -> [1,3,0]；非法返回 null */
+function parseVersion(v) {
+  if (typeof v !== 'string') return null;
+  const m = v.trim().match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return null;
+  return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10)];
+}
+
+/**
+ * 比较两个版本号：a > b 返回 1，a < b 返回 -1，相等返回 0。
+ * 解析失败时按 0 处理（宽松：不认识就当作很老的版本，允许打开）。
+ */
+function compareVersion(a, b) {
+  const pa = parseVersion(a) || [0, 0, 0];
+  const pb = parseVersion(b) || [0, 0, 0];
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] > pb[i]) return 1;
+    if (pa[i] < pb[i]) return -1;
+  }
+  return 0;
+}
+
+/**
+ * 能否打开「文件中的应用版本」。
+ *
+ * 规则：**只拦截主版本号更高的文件**。
+ *   - 1.3.0 打开 1.4.0 / 1.3.5 → 允许（同主版本，格式兼容，只是功能少）
+ *   - 1.3.0 打开 2.0.0          → 拒绝（主版本不同，结构可能不兼容）
+ *
+ * 为什么不按完整语义版本比较：那样每次发补丁版都会导致
+ * 旧版打不开新版文件，即使文件格式一点没变，对用户是纯粹的干扰。
+ * 用户要的「低版本不能打开高版本」用主版本号表达最准确。
+ */
+function canOpenFileVersion(fileVersion, currentVersion) {
+  const pf = parseVersion(fileVersion);
+  const pc = parseVersion(currentVersion || INKWELL_APP_VERSION) || [0, 0, 0];
+  if (!pf) return { ok: true };           // 没有版本号（很老的文件）→ 放行
+  if (pf[0] > pc[0]) {
+    return {
+      ok: false,
+      reason: 'version-too-new',
+      fileVersion,
+      currentVersion: currentVersion || INKWELL_APP_VERSION,
+    };
+  }
+  return { ok: true };
+}
+
 /* ============================ 命令 ============================ */
 
 class AddShapeCommand {
@@ -291,13 +354,55 @@ class BoardStore {
   }
 
   toJSON() {
-    return { version: 1, shapes: this.shapes };
+    return {
+      /*
+       * format: 文件格式标识，用于识别"这是不是 InkWell 白板文件"。
+       * appVersion: 写出该文件的应用版本号（1.3.0 起）。
+       *   读取时用它判断"我的版本够不够开这个文件"。
+       * shapesVersion: 图形结构版本。以后图形字段发生**不兼容**变化时才 +1，
+       *   用于将来做字段迁移（不是每次发版都动）。
+       */
+      format: 'inkwell',
+      appVersion: INKWELL_APP_VERSION,
+      shapesVersion: SHAPES_VERSION,
+      /*
+       * version 是 1.2.0 及更早版本就写过的字段。历史上它存的**就是应用版本号**，
+       * 所以这里必须继续写应用版本号，否则旧版应用读到 version=1 会把它当成
+       * 极老的格式。shapesVersion 才是真正的图形结构版本，两者不要混。
+       */
+      version: INKWELL_APP_VERSION,
+      shapes: this.shapes,
+    };
   }
 
-  loadJSON(data) {
+  /**
+   * 读取白板数据。
+   *
+   * 版本校验在这里做（而不是上层），因为它属于"数据能不能被理解"的范畴，
+   * 任何入口读文件都会经过这里，不会漏。
+   *
+   * @returns {{ok: boolean, reason?: string, fileVersion?: string, currentVersion?: string}}
+   *   失败时**不修改**当前画布内容。
+   */
+  loadJSON(data, currentVersion) {
     const parsed = typeof data === 'string' ? JSON.parse(data) : data;
-    const shapes = Array.isArray(parsed) ? parsed : parsed.shapes || [];
+    // 兼容三种形态：裸数组（最早期的文件）/ 带 shapes 的对象 / 正常文件
+    const shapes = Array.isArray(parsed) ? parsed : (parsed && parsed.shapes) || [];
+
+    // 版本门槛：主版本号更高的文件拒绝打开
+    if (parsed && !Array.isArray(parsed)) {
+      /*
+       * 优先用 appVersion（1.3.0 起的新字段）；没有时回退读 version ——
+       * 1.2.0 及更早写的就是 version，值同样是应用版本号。
+       * 两者都不存在（最早期的裸数组/无版本文件）时按宽松放行。
+       */
+      const fileVersion = parsed.appVersion || parsed.version;
+      const check = canOpenFileVersion(fileVersion, currentVersion);
+      if (!check.ok) return check;
+    }
+
     this.replaceAll(shapes.map(normalizeShape));
+    return { ok: true };
   }
 }
 
@@ -795,4 +900,9 @@ module.exports = {
   NOTE_W,
   NOTE_H,
   FILLABLE_TYPES,
+  INKWELL_APP_VERSION,
+  SHAPES_VERSION,
+  parseVersion,
+  compareVersion,
+  canOpenFileVersion,
 };

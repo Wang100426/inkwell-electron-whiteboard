@@ -18,7 +18,7 @@ app.commandLine.appendSwitch('no-sandbox');
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, '.tmp');
 
-ipcMain.handle('app:info', () => ({ version: '1.2.0', platform: process.platform, electron: process.versions.electron }));
+ipcMain.handle('app:info', () => ({ version: '1.3.0', platform: process.platform, electron: process.versions.electron }));
 ipcMain.handle('window:is-maximized', () => false);
 ipcMain.on('window:minimize', () => {});
 ipcMain.on('window:maximize', () => {});

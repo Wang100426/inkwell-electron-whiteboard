@@ -131,10 +131,12 @@ body {
 .rail {
   width: var(--tool-w);
   flex: 0 0 auto;
+  /* 子弹层要绝对定位在它旁边，这里是定位参考（实际用 fixed + JS 算坐标） */
+  position: relative;
   background: var(--bg-elev);
   border-right: 1px solid var(--border);
   /*
-   * 1.2.0 踩坑：rail 里现在塞了「图标 + 撤销重做 + 缩放 + 11 个工具 + 文件操作」，
+   * 1.2.0 踩坑：rail 里塞了「图标 + 撤销重做 + 缩放 + 工具 + 文件操作」，
    * 内容总高超过 900px 窗口的可视高度时，底部的网格/导出/打开/保存
    * 会被挤出视口（实测 btnGrid 落在 y=936、btnSave 落在 y=1084，窗口只有 886 高），
    * 表现为"这几个按钮完全点不到"。
@@ -144,6 +146,10 @@ body {
    *   .rail-tools（工具区）          flex:1 + overflow-y:auto，唯一滚动区
    *   .rail-actions（文件操作）      固定贴底，永远可见
    * 这样任何窗口高度下，文件操作都不会被挤出去。
+   *
+   * 1.3.0 又把工具区从 11 个平铺按钮精简为 4 个分组按钮（子弹层选具体工具），
+   * 溢出压力进一步减小；三段式布局保留 —— 它是"溢出"的正解，
+   * margin-top:auto 只在空间富余时贴底，救不了溢出。
    */
   padding: 0;
   display: flex;
@@ -484,6 +490,7 @@ body {
  */
 
 .tool {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -519,10 +526,164 @@ body {
   color: #9cc0ff;
 }
 
+/* 子弹层正开着的主按钮：比 .active 再多一点视觉重量，区分"选中的工具"与"展开的菜单" */
+.tool.open {
+  background: var(--bg-hover);
+  border-color: #333b49;
+}
+
 .tool-sep {
   height: 1px;
   background: var(--border);
   margin: 6px 10px;
+}
+
+/* 分组按钮的"当前工具面貌"图标容器 */
+.tool-face {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+}
+
+/*
+ * 带子弹层的分组右上角小三角，暗示"这里能展开"。
+ * 用 CSS 边框画，不用字符，避免字体差异。
+ */
+.tool .caret {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 0;
+  height: 0;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  border-top: 4px solid currentColor;
+  opacity: 0.5;
+  font-size: 0;
+}
+
+.tool:hover .caret,
+.tool.open .caret,
+.tool.active .caret {
+  opacity: 0.9;
+}
+
+/* -------------------- 子弹层 -------------------- */
+
+/*
+ * 定位父元素是 .rail（position: relative），用 JS 算出的
+ * left/top 飘到按钮右侧。
+ *
+ * 为什么不放在 .rail-tools 里：那个容器有 overflow-y: auto，
+ * 弹出内容会被整个裁掉（这是最容易踩的坑）。
+ */
+.flyout {
+  position: fixed;
+  z-index: 60;
+  min-width: 132px;
+  padding: 6px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  animation: flyout-in 0.12s var(--ease);
+  -webkit-app-region: no-drag;
+}
+
+@keyframes flyout-in {
+  from { opacity: 0.4; transform: translateX(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.flyout-title {
+  padding: 3px 8px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+
+.flyout-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.flyout-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+  -webkit-app-region: no-drag;
+  transition: background 0.13s, color 0.13s;
+}
+
+.flyout-item svg {
+  flex: 0 0 auto;
+}
+
+.flyout-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.flyout-item.active {
+  background: var(--accent-soft);
+  color: #9cc0ff;
+}
+
+.flyout-item .fi-label {
+  flex: 1;
+}
+
+/* 右侧的快捷键提示 */
+.flyout-item .fi-key {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 10px;
+  color: var(--text-mute);
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.flyout-item.active .fi-key {
+  color: #9cc0ff;
+  border-color: var(--accent-line);
+}
+
+/* -------------------- 属性面板头部 -------------------- */
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-bottom: 11px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--accent);
+}
+
+.panel-head-icon {
+  display: grid;
+  place-items: center;
+}
+
+.panel-head-name {
+  font-size: 12.5px;
+  font-weight: 620;
+  color: var(--text);
+  letter-spacing: 0.2px;
 }
 
 /* 属性面板 */

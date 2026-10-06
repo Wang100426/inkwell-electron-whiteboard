@@ -268,13 +268,23 @@ app.whenReady().then(async () => {
     check('按 F 切到填充工具', r.tool === 'fill', r);
   }
 
-  /* ---------- 13. UI：工具栏有填充按钮 ---------- */
+  /* ---------- 13. UI：填充工具在「图形」分组子弹层里 ---------- */
   {
+    // 1.3.0 起左侧栏只有 4 个分组按钮，填充属于「图形」分组，
+    // 不再是顶层 .tool 按钮，而要展开子弹层才能看到。
     const r = await js([
-      'const b = document.querySelector(".tool[data-tool=\\"fill\\"]");',
-      'return { exists: !!b, title: b ? b.title : null };',
+      'const g = document.querySelector(".rail-tools .tool[data-group=\\"shape\\"]");',
+      'if (!g) return { groupExists: false };',
+      'g.click();',
+      'const b = document.querySelector("#flyoutItems .flyout-item[data-tool=\\"fill\\"]");',
+      'const open = !document.getElementById("flyout").hidden;',
+      'const pick = b ? b.querySelector(".fi-label").textContent : null;',
+      'document.getElementById("flyout").hidden = true;',
+      'return { groupExists: true, open, exists: !!b, pick };',
     ].join('\n'));
-    check('工具栏存在填充按钮', r.exists === true, r);
+    check('图形分组里有填充按钮', r.groupExists && r.exists === true, r);
+    check('填充按钮标签 = 填充', r.pick === '填充', r.pick);
+    check('分组子弹层能打开', r.open === true, r.open);
   }
 
   if (errors.length) {

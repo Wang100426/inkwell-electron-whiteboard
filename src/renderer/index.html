@@ -47,56 +47,58 @@
         </div>
         </div>
 
-        <!-- 中间滚动区：绘图工具。窗口不够高时只有这一段滚动 -->
+        <!--
+          中间区：绘图工具（1.3.0 精简为 4 个按钮）
+          选择 / 自由绘画 / 图形 / 文本
+          带子工具的分组（自由绘画、图形、文本）点击后向右弹出子弹层选具体工具，
+          子弹层收起后主按钮显示"组内当前工具"的图标，一眼能看出当前是什么。
+        -->
         <div class="rail-tools" id="railTools">
 
-        <!-- 绘图工具 -->
-        <button class="tool" data-tool="select" title="选择 (V)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l6.5 17 2.2-6.9 7.3-2.1z"/></svg>
+        <!-- 1. 选择 -->
+        <button class="tool tool-group" data-group="select" data-tool="select" title="选择 (V)">
+          <span class="tool-face" data-face="select">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l6.5 17 2.2-6.9 7.3-2.1z"/></svg>
+          </span>
           <span>选择</span>
         </button>
-        <button class="tool" data-tool="pen" title="画笔 (B)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 10-10-3-3L5 16z"/><path d="M14 5l3 3"/></svg>
-          <span>画笔</span>
+
+        <!-- 2. 自由绘画：画笔 / 橡皮 / 抓手 -->
+        <button class="tool tool-group" data-group="draw" data-tool="pen" title="自由绘画 (B)" aria-haspopup="true">
+          <span class="tool-face" data-face="pen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 10-10-3-3L5 16z"/><path d="M14 5l3 3"/></svg>
+          </span>
+          <span class="caret"></span>
+          <span>绘画</span>
         </button>
-        <button class="tool" data-tool="eraser" title="橡皮 (E)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15l7-7 6 6-4 4H7z"/><path d="M20 20h-9"/></svg>
-          <span>橡皮</span>
+
+        <!-- 3. 图形：矩形 / 椭圆 / 直线 / 箭头 / 填充 -->
+        <button class="tool tool-group" data-group="shape" data-tool="rect" title="图形 (R)" aria-haspopup="true">
+          <span class="tool-face" data-face="rect">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="6" width="16" height="12" rx="2"/></svg>
+          </span>
+          <span class="caret"></span>
+          <span>图形</span>
         </button>
-        <button class="tool" data-tool="fill" title="填充 (F)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 3.5l8 8a1.4 1.4 0 010 2l-4.4 4.4a1.4 1.4 0 01-2 0L4 12l4.5-8.5z"/><path d="M4.6 11.6h11"/><path d="M19.5 15c1.1 1.4 1.7 2.3 1.7 3a1.7 1.7 0 11-3.4 0c0-.7.6-1.6 1.7-3z"/></svg>
-          <span>填充</span>
+
+        <!-- 4. 文本：文本 / 便签 -->
+        <button class="tool tool-group" data-group="text" data-tool="text" title="文本 (T)" aria-haspopup="true">
+          <span class="tool-face" data-face="text">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6V4h14v2"/><path d="M12 4v16M9 20h6"/></svg>
+          </span>
+          <span class="caret"></span>
+          <span>文本</span>
         </button>
-        <div class="tool-sep"></div>
-        <button class="tool" data-tool="rect" title="矩形 (R)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="6" width="16" height="12" rx="2"/></svg>
-          <span>矩形</span>
-        </button>
-        <button class="tool" data-tool="ellipse" title="椭圆 (O)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="12" rx="8" ry="6.5"/></svg>
-          <span>椭圆</span>
-        </button>
-        <button class="tool" data-tool="line" title="直线 (L)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 19L19 5"/></svg>
-          <span>直线</span>
-        </button>
-        <button class="tool" data-tool="arrow" title="箭头 (A)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19L19 5"/><path d="M12 5h7v7"/></svg>
-          <span>箭头</span>
-        </button>
-        <div class="tool-sep"></div>
-        <button class="tool" data-tool="text" title="文字 (T)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6V4h14v2"/><path d="M12 4v16M9 20h6"/></svg>
-          <span>文字</span>
-        </button>
-        <button class="tool" data-tool="note" title="便签 (N)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M5 4h14v10l-5 6H5z"/><path d="M19 14h-5v6"/></svg>
-          <span>便签</span>
-        </button>
-        <button class="tool" data-tool="hand" title="抓手 (H / 空格)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M12 10.5V4.5a1.5 1.5 0 0 1 3 0V11"/><path d="M15 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-6-6v-3.5a1.5 1.5 0 0 1 3 0V13"/></svg>
-          <span>抓手</span>
-        </button>
+        </div>
+
+        <!--
+          子弹层：分组内具体工具。
+          放在 .rail 内部、用绝对定位飘到右侧，避免被 rail-tools 的
+          overflow:auto 裁掉（这是它不能放在 rail-tools 里的原因）。
+        -->
+        <div class="flyout" id="flyout" hidden>
+          <div class="flyout-title" id="flyoutTitle">绘图</div>
+          <div class="flyout-items" id="flyoutItems"></div>
         </div>
 
         <!-- 底部固定区：文件与视图操作，只有图标不配文字 -->
@@ -119,9 +121,21 @@
         </div>
       </aside>
 
-      <!-- 属性面板 -->
+      <!-- 属性面板：设置项随左侧栏当前分组切换 -->
       <aside class="panel" id="panel">
-        <section class="panel-group">
+        <!-- 当前分组标题，让面板和左侧栏的分组语义对上 -->
+        <div class="panel-head">
+          <span class="panel-head-icon" id="panelHeadIcon"></span>
+          <span class="panel-head-name" id="panelHeadName">自由绘画</span>
+        </div>
+
+        <!-- 选择：只显示位置/删除相关，不显示画笔设置 -->
+        <section class="panel-group" id="selectGroup" hidden>
+          <p class="hint">框选或点击图形后可拖动、缩放。方向键微调，Shift+方向键加速。</p>
+        </section>
+
+        <!-- 颜色（绘画/图形/文本都用；填充工具下变成「填充色」） -->
+        <section class="panel-group" id="colorGroup">
           <h4 id="colorLabel">颜色</h4>
           <div class="swatches" id="swatches"></div>
           <div class="color-custom">
@@ -132,7 +146,7 @@
           <button class="btn btn-ghost btn-clear-fill" id="btnNoFill" hidden>清除填充</button>
         </section>
 
-        <section class="panel-group">
+        <section class="panel-group" id="widthGroup">
           <h4>线宽 <em id="widthValue">3</em></h4>
           <div class="width-presets" id="widthPresets">
             <button data-w="2"></button>
