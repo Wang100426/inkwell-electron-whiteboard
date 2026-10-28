@@ -210,6 +210,24 @@ function requestRender() {
 
 store.on(() => {
   state.dirty = true;
+  /*
+   * 填充色完整性巡检。
+   *
+   * NOTE_COLOR(#f5c451) 现在只作为便签的绘制规则存在，数据里不该出现。
+   * 一旦发现**非便签**图形带着这个值，说明有未知路径把便签色串过去了 ——
+   * 当场纠正并记下 type/id，用户既不会再看到"填好的颜色变黄"，
+   * 我们也拿到了定位线索（下次出现直接看日志）。
+   */
+  const tainted = store.shapes.filter((s) => s.type !== 'note' && s.fill === NOTE_COLOR);
+  if (tainted.length) {
+    tainted.forEach((s) => {
+      s.fill = 'transparent';
+      s.fillEnabled = false;
+    });
+    trace('!! 发现 ' + tainted.length + ' 个非便签图形带便签黄: ' +
+      tainted.map((s) => s.type + '#' + s.id).join(',') + ' —— 已清除填充');
+    requestRender();
+  }
   // 撤销/重做会替换图形对象，按 id 重新绑定选中项
   if (store.rebind) {
     state.selection = store.rebind(state.selection);
@@ -1752,7 +1770,7 @@ window.inkwell.getInfo().then((info) => {
 
 // 暴露给自动化测试 / 控制台调试使用
 window.__inkwell = {
-  version: '1.3.2',
+  version: '1.3.3',
   store,
   renderer,
   state,

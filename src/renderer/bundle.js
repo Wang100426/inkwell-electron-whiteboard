@@ -393,7 +393,7 @@ const FILLABLE_TYPES = ['rect', 'ellipse'];
  * （主进程的 app.getVersion() 读的是 package.json，是权威值；
  *  这个常量只用于写进文件，供**旧版本应用**判断能否打开。）
  */
-const INKWELL_APP_VERSION = '1.3.2';
+const INKWELL_APP_VERSION = '1.3.3';
 
 /** 图形结构版本：字段发生不兼容变更时才 +1 */
 const SHAPES_VERSION = 1;
@@ -785,10 +785,18 @@ function makeBase(tool, style) {
   }
   if (tool === 'note') {
     base.text = '';
-    // 便签是固定黄色纸片，与填充色板完全解耦。
-    // 曾经便签工具会写全局 style.fill/fillEnabled，导致之后画的矩形
-    // 莫名被填成黄色 —— 那个耦合已移除，这里写死便签自己的颜色。
-    base.fill = NOTE_COLOR;
+    /*
+     * 便签的黄色**不写进图形数据**，只作为绘制规则存在（见 drawShape 的 note 分支）。
+     *
+     * 早前这里写的是 base.fill = NOTE_COLOR。虽然当时不会改传入的 style，
+     * 但那个黄色从此就作为"图形数据"在 shapes 里流动 —— 只要有任何一条
+     * 路径（撤销重做、复制、读档、将来的新功能）把这个值挪到别的图形上，
+     * 就会出现"填好的颜色变成便签黄"。
+     *
+     * 现在 fill 保持透明，颜色由类型决定：黄色只在渲染时出现一次，
+     * 数据里根本不存在这个值，也就不可能污染任何其它图形。
+     */
+    base.fill = 'transparent';
     base.fillEnabled = true;
   }
   // 压感笔迹：pressureSensitive 标记该笔迹按压力变宽（每个点带 w）
@@ -838,6 +846,13 @@ function normalizeShape(s) {
   } else if (base.type === 'note') {
     Object.assign(base, normalizeRect(s.x, s.y, s.x + s.w, s.y + s.h));
     base.text = s.text || '';
+    /*
+     * 便签不携带颜色数据（渲染时按类型补 NOTE_COLOR）。
+     * 这里顺手把旧文件里存过的便签黄清掉 —— 老文件 note.fill 就是 #f5c451，
+     * 不清的话黄色又会以数据形式回到画布上。外观不变，只是不再存。
+     */
+    base.fill = 'transparent';
+    base.fillEnabled = true;
   }
   return base;
 }
@@ -1619,6 +1634,24 @@ function requestRender() {
 
 store.on(() => {
   state.dirty = true;
+  /*
+   * 填充色完整性巡检。
+   *
+   * NOTE_COLOR(#f5c451) 现在只作为便签的绘制规则存在，数据里不该出现。
+   * 一旦发现**非便签**图形带着这个值，说明有未知路径把便签色串过去了 ——
+   * 当场纠正并记下 type/id，用户既不会再看到"填好的颜色变黄"，
+   * 我们也拿到了定位线索（下次出现直接看日志）。
+   */
+  const tainted = store.shapes.filter((s) => s.type !== 'note' && s.fill === NOTE_COLOR);
+  if (tainted.length) {
+    tainted.forEach((s) => {
+      s.fill = 'transparent';
+      s.fillEnabled = false;
+    });
+    trace('!! 发现 ' + tainted.length + ' 个非便签图形带便签黄: ' +
+      tainted.map((s) => s.type + '#' + s.id).join(',') + ' —— 已清除填充');
+    requestRender();
+  }
   // 撤销/重做会替换图形对象，按 id 重新绑定选中项
   if (store.rebind) {
     state.selection = store.rebind(state.selection);
@@ -3161,7 +3194,7 @@ window.inkwell.getInfo().then((info) => {
 
 // 暴露给自动化测试 / 控制台调试使用
 window.__inkwell = {
-  version: '1.3.2',
+  version: '1.3.3',
   store,
   renderer,
   state,

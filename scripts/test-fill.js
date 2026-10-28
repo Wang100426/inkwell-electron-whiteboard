@@ -24,7 +24,7 @@ app.commandLine.appendSwitch('disable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 app.commandLine.appendSwitch('no-sandbox');
 
-ipcMain.handle('app:info', () => ({ version: '1.3.2', platform: process.platform, electron: process.versions.electron }));
+ipcMain.handle('app:info', () => ({ version: '1.3.3', platform: process.platform, electron: process.versions.electron }));
 /* 1.2.0 无边框窗口：渲染层会查询最大化状态，测试环境补个 stub 避免报错 */
 ipcMain.handle('window:is-maximized', () => false);
 ipcMain.on('window:minimize', () => {});
@@ -129,8 +129,13 @@ app.whenReady().then(async () => {
       'const note = store.shapes.find(s => s.type === "note");',
       'return { fill: note && note.fill, enabled: note && note.fillEnabled, color: note && note.color };',
     ].join('\n'));
-    check('便签底色固定为黄', r.fill === '#f5c451', r);
-    check('便签带填充标记', r.enabled === true, r);
+    /*
+     * 便签的黄色不再是"图形数据"：fill 存 transparent，
+     * 颜色由 drawShape 的 note 分支按类型补 NOTE_COLOR。
+     * 这样黄色在 shapes 里根本不存在，也就不可能被别人继承。
+     */
+    check('便签不在数据里存黄色（改由类型决定）', r.fill === 'transparent', r);
+    check('便签带填充标记（渲染时画纸片底色）', r.enabled === true, r);
   }
 
   /* ---------- 3b. 完整真实序列：上色 → 便签 → 回到填充 ---------- */
@@ -184,7 +189,7 @@ app.whenReady().then(async () => {
     check('上色后矩形 fillEnabled = true', r.filled && r.filled.rectOn === true, r.filled);
 
     // 便签这一步不能有任何回写
-    check('便签自己仍是固定黄', r.noteFill === '#f5c451', r.noteFill);
+    check('便签不把黄色写进图形数据', r.noteFill === 'transparent', r.noteFill);
     check('便签工具下不显示颜色区（色板对它无效）', r.colorHiddenForNote === true, r.colorHiddenForNote);
 
     // 回到填充：工具状态与图形数据都没被污染
@@ -208,6 +213,64 @@ app.whenReady().then(async () => {
       'return { fill: state.style.fill };',
     ].join('\n'));
     check('填充色一旦被污染成便签黄会自动回退', r.fill === '#4c8dff', r.fill);
+  }
+
+  /* ---------- 3d. 数据巡检：非便签图形带便签黄会被清掉 ---------- */
+  /*
+   * 用户报的"已填色的图形变成便签黄"如果真发生，说明有未知路径
+   * 把这个色值串到了别的图形上。store 的 change 监听里有巡检，
+   * 这里直接模拟一个"被串味"的矩形，确认会被当场纠正。
+   */
+  {
+    const r = await js(PRELUDE + [
+      'store.replaceAll([]); store.history.clear();',
+      'const rect = drawRect(200, 200, 400, 360);',
+      'rect.fill = "#f5c451"; rect.fillEnabled = true;',
+      'store.emit("edit");',              // 触发巡检
+      'return { fill: rect.fill, on: rect.fillEnabled };',
+    ].join('\n'));
+    check('非便签图形带便签黄会被清成无填充', r.fill === 'transparent' && r.on === false, r);
+  }
+
+  /* ---------- 3e. 落盘数据里不含便签黄 ---------- */
+  {
+    const r = await js(PRELUDE + [
+      'store.replaceAll([]); store.history.clear();',
+      'const mk = window.__inkwell.makeBase;',
+      'const rect = Object.assign(mk("rect", state.style), { x: 200, y: 200, w: 200, h: 160 });',
+      'rect.fill = "#38d39f"; rect.fillEnabled = true;',
+      'store.addShape(rect);',
+      'const note = Object.assign(mk("note", state.style), { x: 600, y: 200, w: 220, h: 160, text: "便签" });',
+      'store.addShape(note);',
+      'const json = JSON.stringify(store.toJSON());',
+      'return { hasYellow: json.indexOf("f5c451") >= 0,',
+      '         hasGreen: json.indexOf("38d39f") >= 0,',
+      '         noteFill: note.fill };',
+    ].join('\n'));
+    check('落盘 JSON 里不含便签黄 f5c451', r.hasYellow === false, r);
+    check('落盘 JSON 里保留了矩形的填充色', r.hasGreen === true, r);
+    check('便签写入文件时 fill 为 transparent', r.noteFill === 'transparent', r.noteFill);
+  }
+
+  /* ---------- 3f. 便签仍然画成黄色纸片（数据不存色，渲染必须补上） ---------- */
+  /*
+   * 前面几条把黄色从数据里拿掉了。这条是**反向保险**：
+   * 如果渲染分支没按类型补色，便签会变成透明/黑纸片 ——
+   * 那比原 bug 更严重。直接取像素验。
+   */
+  {
+    const r = await js(PRELUDE + [
+      'store.replaceAll([]); store.history.clear();',
+      'const mk = window.__inkwell.makeBase;',
+      'const note = Object.assign(mk("note", state.style), { x: 0, y: 0, w: 220, h: 160, text: "便签" });',
+      'const cv = window.__inkwell.renderer.exportPNG([note], { scale: 1, background: "#000000" });',
+      'const ctx2 = cv.getContext("2d");',
+      'const d = ctx2.getImageData(Math.floor(cv.width / 2), Math.floor(cv.height * 0.75), 1, 1).data;',
+      'return { w: cv.width, h: cv.height, r: d[0], g: d[1], b: d[2] };',
+    ].join('\n'));
+    // NOTE_COLOR = #f5c451 → rgb(245,196,81)
+    check('便签仍然渲染成黄色纸片',
+      r && r.r > 220 && r.g > 170 && r.g < 225 && r.b > 50 && r.b < 125, r);
   }
 
 

@@ -30,7 +30,7 @@ app.commandLine.appendSwitch('no-sandbox');
 
 const ROOT = path.join(__dirname, '..');
 
-ipcMain.handle('app:info', () => ({ version: '1.3.2', platform: process.platform, electron: process.versions.electron }));
+ipcMain.handle('app:info', () => ({ version: '1.3.3', platform: process.platform, electron: process.versions.electron }));
 ipcMain.handle('file:save', () => ({ ok: false }));
 ipcMain.on('app:health', () => {});
 ipcMain.on('app:trace', () => {});
@@ -175,7 +175,7 @@ app.whenReady().then(async () => {
   check('窗口按钮位于 stage 内', dom.winBtns.inStage);
   check('preload 提供 minimizeWindow', dom.winBtns.minimizeCalled);
   check('旧 gridToggle 开关已删除', dom.gridToggleGone);
-  check('版本号已升到 1.3.2', dom.version === '1.3.2', dom.version);
+  check('版本号已升到 1.3.3', dom.version === '1.3.3', dom.version);
 
   check('应用图标用 assets/icon.png', dom.brandImg && /icon\.png$/.test(dom.brandImg.src), dom.brandImg);
   check('图标资源实际加载成功', dom.brandImg && dom.brandImg.natural > 0, dom.brandImg && dom.brandImg.natural);
