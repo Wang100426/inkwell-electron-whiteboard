@@ -1,5 +1,12 @@
 'use strict';
-/* 校验打包后的 asar 里确实是 1.3.0 的内容（路径用反斜杠，见项目约定） */
+/*
+ * 校验打包后的 asar 里确实是**当前版本**的内容。
+ *
+ * 版本号从 package.json 读，不写死 —— 写死的结果就是每次发版都要改这个脚本，
+ * 忘了改就会出现「版本对了但检查还在拿旧号比」的假失败。
+ *
+ * 路径用反斜杠：asar 内部路径是 Windows 风格（见项目约定）。
+ */
 
 const asar = require('@electron/asar');
 const path = require('path');
@@ -26,16 +33,18 @@ function stripCssComments(s) {
 const cssNoComment = stripCssComments(css);
 
 const checks = [
-  ['bundle 含 1.3.0 版本常量', bundle.includes("INKWELL_APP_VERSION = '1.3.0'")],
+  ['bundle 含当前版本常量', bundle.includes(`INKWELL_APP_VERSION = '${pkg.version}'`)],
   ['bundle 含 canOpenFileVersion', bundle.includes('canOpenFileVersion')],
   ['bundle 含 TOOL_GROUPS 分组表', bundle.includes('TOOL_GROUPS')],
-  ['bundle 含 openFlyout 子弹层', bundle.includes('function openFlyout')],
-  ['bundle 的 __inkwell.version = 1.3.0', bundle.includes("version: '1.3.0'")],
-  ['package.json version = 1.3.0', pkg.version === '1.3.0'],
-  ['index.html 有 flyout 容器', idx.includes('id="flyout"')],
+  ['bundle 含 renderVariants（面板工具变体区）', bundle.includes('function renderVariants')],
+  ['bundle 已移除 openFlyout（旧子弹层）', bundle.includes('openFlyout') === false],
+  ['bundle 的 __inkwell.version = 当前版本', bundle.includes(`version: '${pkg.version}'`)],
+  ['index.html 有变体区容器', idx.includes('id="variantGroup"')],
+  ['index.html 已移除子弹层容器', idx.includes('id="flyout"') === false],
   ['index.html 有 tool-group 按钮', idx.includes('tool-group')],
   ['index.html 有面板头 panelHeadName', idx.includes('panelHeadName')],
-  ['styles.css 有 .flyout 规则', css.includes('.flyout')],
+  ['styles.css 有 .variant-btn 规则', css.includes('.variant-btn')],
+  ['styles.css 已移除 .flyout 规则（注释不算）', cssNoComment.includes('.flyout') === false],
   ['styles.css 无「活的」scrollbar-width 声明（注释不算）', !/scrollbar-width\s*:/.test(cssNoComment)],
   ['styles.css 无「活的」scrollbar-color 声明', !/scrollbar-color\s*:/.test(cssNoComment)],
   ['styles.css 有全局 --sb-w 变量', css.includes('--sb-w')],

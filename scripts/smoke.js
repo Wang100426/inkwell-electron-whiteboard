@@ -83,7 +83,8 @@ app.whenReady().then(async () => {
       return {
         hasCanvas: !!document.getElementById('canvas'),
         toolCount: document.querySelectorAll('.rail-tools .tool').length,
-        flyoutCount: document.querySelectorAll('.rail .flyout').length,
+        variantBox: !!document.getElementById('variantGroup'),
+        variantCount: document.querySelectorAll('#variantItems .variant-btn').length,
         swatchCount: document.querySelectorAll('.swatch').length,
         engineReady: typeof window.__inkwell === 'object' && !!window.__inkwell.store,
         canvasW: document.getElementById('canvas').width,
@@ -93,7 +94,7 @@ app.whenReady().then(async () => {
       };
     `);
     log('DOM 探针: ' + JSON.stringify(probe));
-    if (!probe.hasCanvas || probe.toolCount !== 4 || probe.flyoutCount !== 1 || !probe.engineReady) {
+    if (!probe.hasCanvas || probe.toolCount !== 4 || !probe.variantBox || !probe.engineReady) {
       throw new Error('DOM/引擎探针未通过');
     }
 

@@ -275,6 +275,14 @@ function setTool(tool) {
   state.tool = tool;
   const group = TOOL_TO_GROUP[tool] || 'draw';
   state.toolGroup = group;
+  /*
+   * 记住"这个分组上次用的是谁"，供左侧栏主按钮图标与再次点分组时恢复。
+   * 放在 setTool 而不是只放在变体按钮的 click 里 —— 快捷键（R/O/L…）
+   * 切工具时也要记住，否则一按快捷键分组记忆就和实际脱节了。
+   */
+  if (TOOL_GROUPS[group] && TOOL_GROUPS[group].tools.length) {
+    state.groupPick[group] = tool;
+  }
 
   /*
    * 主按钮高亮：按"所属分组"而不是"具体工具"。
@@ -291,7 +299,8 @@ function setTool(tool) {
    * 如果用户手动选过（记住偏好），就用记住的那个。
    */
   syncGroupFaces();
-  closeFlyout();
+  // 组内工具铺在面板顶部（原"子弹层"的替代，见 renderVariants 注释）
+  renderVariants();
 
   stage.className = 'stage tool-' + tool;
   $('statusTool').textContent = TOOL_NAMES[tool] || tool;
@@ -334,6 +343,12 @@ function syncGroupFaces() {
     // 选择组只有一个工具，固定即可
     const cur = g === 'select' ? 'select' : (state.groupPick[g] || TOOL_GROUPS[g].tools[0].tool);
     face.innerHTML = toolIconSvg(cur, 19);
+    /*
+     * 把当前工具同时写回 data-face。
+     * 只换 innerHTML 的话，DOM 上看不出这个按钮现在代表哪个工具 ——
+     * 测试和诊断只能去解析 svg path，既脆又难读。
+     */
+    face.dataset.face = cur;
     // 同步主按钮 tooltip 里的当前工具名
     if (g !== 'select') {
       const meta = TOOL_GROUPS[g].tools.find((t) => t.tool === cur);
@@ -1466,105 +1481,77 @@ function reorderSelection(mode) {
 
 /* ============================ 事件绑定 ============================ */
 
-/* ---------------- 左侧栏：分组按钮 + 子弹层（1.3.0） ---------------- */
-
-/** 当前子弹层展现的分组，null 表示未打开 */
-let flyoutGroup = null;
+/* ---------------- 左侧栏：分组按钮 + 面板内工具变体（1.3.1） ---------------- */
+/*
+ * 1.3.0 的「向右弹出子弹层」方案已废弃，原因不是样式没调好，而是结构上不成立：
+ *   - 面板紧贴 rail 右侧（rail 74px，panel 从 x=74 开始，宽 232px），
+ *     浮层定位到 rail 右边缘 +6px = 80px，正好整块压进面板底下；
+ *   - rail 自己还有 overflow:hidden + z-index:15，是个层叠上下文，
+ *     浮层 z-index 提到 60 也只是"在 rail 内部排第一"，照样出不去。
+ * 实测 elementFromPoint 在浮层中心命中的是面板按钮，用户侧就是
+ * 「点了分组没反应、二级菜单不见了」。
+ *
+ * 现在改成：组内工具直接铺在**面板顶部、颜色上方**（#variantGroup）。
+ * 先选画什么、再调什么颜色，顺序符合作画流程，遮挡问题也直接没了。
+ */
 
 /**
- * 打开某个分组的子弹层。
- * 子弹层用绝对定位飘在 rail 右侧（见 styles.css），
- * 所以这里只需要填内容 + 去掉 hidden。
+ * 渲染当前分组的工具变体。
+ * 单工具分组（选择）整块隐藏 —— 没有可选项就不要占位置。
  */
-function openFlyout(group) {
+function renderVariants() {
+  const group = state.toolGroup;
   const g = TOOL_GROUPS[group];
-  if (!g || !g.tools.length) return;
-  flyoutGroup = group;
-  $('flyoutTitle').textContent = g.label;
-  const wrap = $('flyoutItems');
+  const box = $('variantGroup');
+  const wrap = $('variantItems');
+  if (!box || !wrap) return;
+
+  const tools = (g && g.tools) || [];
+  if (tools.length <= 1) {
+    box.hidden = true;
+    wrap.innerHTML = '';
+    return;
+  }
+
+  box.hidden = false;
+  $('variantLabel').textContent = g.label;
   wrap.innerHTML = '';
-  g.tools.forEach((t) => {
+  tools.forEach((t) => {
     const b = document.createElement('button');
-    b.className = 'flyout-item';
+    b.className = 'variant-btn';
     b.dataset.tool = t.tool;
-    // 当前工具高亮
     if (state.tool === t.tool) b.classList.add('active');
-    b.innerHTML = `${toolIconSvg(t.tool, 17)}<span class="fi-label">${t.label}</span><span class="fi-key">${t.key}</span>`;
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      // 记住这个分组选了谁，下次点主按钮直接回到它
+    b.title = `${t.label} (${t.key})`;
+    b.innerHTML = `${toolIconSvg(t.tool, 17)}<span>${t.label}</span>`;
+    b.addEventListener('click', () => {
       state.groupPick[group] = t.tool;
       setTool(t.tool);
     });
     wrap.appendChild(b);
   });
-
-  // 定位到主按钮旁边
-  const btn = document.querySelector(`.rail-tools .tool[data-group="${group}"]`);
-  const fl = $('flyout');
-  fl.hidden = false;
-  if (btn) {
-    const rb = btn.getBoundingClientRect();
-    const rl = $('rail').getBoundingClientRect();
-    // 顶到按钮上沿对齐，但不要超出视口底部
-    const top = Math.min(rb.top, window.innerHeight - fl.offsetHeight - 10);
-    fl.style.top = Math.max(8, top) + 'px';
-    fl.style.left = (rl.right + 6) + 'px';
-  }
-  // 高亮当前打开的分组按钮（即使工具没变）
-  document.querySelectorAll('.rail-tools .tool').forEach((b) => {
-    b.classList.toggle('open', b.dataset.group === group);
-  });
-}
-
-function closeFlyout() {
-  flyoutGroup = null;
-  const fl = $('flyout');
-  if (fl) fl.hidden = true;
-  document.querySelectorAll('.rail-tools .tool').forEach((b) => b.classList.remove('open'));
 }
 
 /**
- * 分组按钮点击策略：
- *  - 单工具分组（选择）：直接切
- *  - 多工具分组：已在该分组 → 开关子弹层；不在 → 先切到"记住的工具"并打开子弹层
- *
- * 为什么不在第一次点击时就直接切工具：用户点「图形」的意图通常是
- * "我要画图形，让我选个形状"。直接给矩形也行，但打开子弹层更符合预期，
- * 而且能立刻看到组里还有什么。工具同时已切好，不打开子弹层也能直接画。
+ * 分组按钮点击：切到该分组"记住的工具"。
+ * 组内其它工具在面板顶部的变体区里选，不再有弹出层。
  */
 document.querySelectorAll('.rail-tools .tool').forEach((btn) => {
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
+  btn.addEventListener('click', () => {
     const group = btn.dataset.group;
     const g = TOOL_GROUPS[group];
     if (!g) return;
-
-    if (!g.tools.length) {           // 单工具：选择
+    if (!g.tools.length) {          // 单工具：选择
       setTool(group);
       return;
     }
-    if (flyoutGroup === group) {     // 再点一下收起
-      closeFlyout();
-      return;
-    }
-    // 切到记住的工具（若已在组内则保持当前具体工具）
-    const pick = TOOL_TO_GROUP[state.tool] === group ? state.tool : (state.groupPick[group] || g.tools[0].tool);
+    // 已在该分组就保持当前具体工具，否则回到记住的那个
+    const pick = TOOL_TO_GROUP[state.tool] === group
+      ? state.tool
+      : (state.groupPick[group] || g.tools[0].tool);
     state.groupPick[group] = pick;
-    setTool(pick);                   // setTool 内部会 closeFlyout
-    openFlyout(group);               // 再打开子弹层
+    setTool(pick);
   });
 });
-
-// 点其他地方/按 Esc 收起子弹层
-document.addEventListener('click', () => { if (flyoutGroup) closeFlyout(); });
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && flyoutGroup) { closeFlyout(); e.stopPropagation(); }
-}, true);
-$('flyout').addEventListener('click', (e) => e.stopPropagation());
-// 滚动时子弹层会错位，直接收起
-$('railTools').addEventListener('scroll', () => { if (flyoutGroup) closeFlyout(); });
-window.addEventListener('resize', () => { if (flyoutGroup) closeFlyout(); });
 
 $('colorPicker').addEventListener('input', (e) => {
   if (state.tool === 'fill') {
@@ -1735,7 +1722,7 @@ window.inkwell.getInfo().then((info) => {
 
 // 暴露给自动化测试 / 控制台调试使用
 window.__inkwell = {
-  version: '1.3.0',
+  version: '1.3.1',
   store,
   renderer,
   state,

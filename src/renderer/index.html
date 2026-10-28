@@ -50,8 +50,14 @@
         <!--
           中间区：绘图工具（1.3.0 精简为 4 个按钮）
           选择 / 自由绘画 / 图形 / 文本
-          带子工具的分组（自由绘画、图形、文本）点击后向右弹出子弹层选具体工具，
-          子弹层收起后主按钮显示"组内当前工具"的图标，一眼能看出当前是什么。
+
+          组内具体工具（画笔/橡皮、矩形/椭圆/直线/箭头/填充…）不在这里，
+          而是显示在**右侧面板顶部的「工具变体」区**（#variantGroup）。
+          主按钮的图标会随组内当前工具变化，一眼看出当前是什么。
+
+          为什么不做向右弹出的浮层：面板紧贴 rail 右边（panel 从 x=74 开始），
+          任何"向右弹出"的浮层都会压在面板下面；rail 本身还有 overflow:hidden
+          和 z-index:15 的层叠上下文，浮层即使把 z-index 提到很高也出不来。
         -->
         <div class="rail-tools" id="railTools">
 
@@ -68,7 +74,6 @@
           <span class="tool-face" data-face="pen">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 10-10-3-3L5 16z"/><path d="M14 5l3 3"/></svg>
           </span>
-          <span class="caret"></span>
           <span>绘画</span>
         </button>
 
@@ -77,7 +82,6 @@
           <span class="tool-face" data-face="rect">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="6" width="16" height="12" rx="2"/></svg>
           </span>
-          <span class="caret"></span>
           <span>图形</span>
         </button>
 
@@ -86,19 +90,8 @@
           <span class="tool-face" data-face="text">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6V4h14v2"/><path d="M12 4v16M9 20h6"/></svg>
           </span>
-          <span class="caret"></span>
           <span>文本</span>
         </button>
-        </div>
-
-        <!--
-          子弹层：分组内具体工具。
-          放在 .rail 内部、用绝对定位飘到右侧，避免被 rail-tools 的
-          overflow:auto 裁掉（这是它不能放在 rail-tools 里的原因）。
-        -->
-        <div class="flyout" id="flyout" hidden>
-          <div class="flyout-title" id="flyoutTitle">绘图</div>
-          <div class="flyout-items" id="flyoutItems"></div>
         </div>
 
         <!-- 底部固定区：文件与视图操作，只有图标不配文字 -->
@@ -128,6 +121,18 @@
           <span class="panel-head-icon" id="panelHeadIcon"></span>
           <span class="panel-head-name" id="panelHeadName">自由绘画</span>
         </div>
+
+        <!--
+          工具变体（1.3.1）：当前分组内的具体工具。
+          放在面板最顶部、颜色之上 —— 先选"画什么"，再调"什么颜色"，
+          顺序也符合实际作画流程。
+
+          只读 currentGroup 的 tools；单工具分组（选择）整块隐藏。
+        -->
+        <section class="panel-group" id="variantGroup" hidden>
+          <h4 id="variantLabel">工具</h4>
+          <div class="variant-grid" id="variantItems"></div>
+        </section>
 
         <!-- 选择：只显示位置/删除相关，不显示画笔设置 -->
         <section class="panel-group" id="selectGroup" hidden>

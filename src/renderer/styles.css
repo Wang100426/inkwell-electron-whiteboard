@@ -526,12 +526,6 @@ body {
   color: #9cc0ff;
 }
 
-/* 子弹层正开着的主按钮：比 .active 再多一点视觉重量，区分"选中的工具"与"展开的菜单" */
-.tool.open {
-  background: var(--bg-hover);
-  border-color: #333b49;
-}
-
 .tool-sep {
   height: 1px;
   background: var(--border);
@@ -546,120 +540,59 @@ body {
   height: 19px;
 }
 
-/*
- * 带子弹层的分组右上角小三角，暗示"这里能展开"。
- * 用 CSS 边框画，不用字符，避免字体差异。
- */
-.tool .caret {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 0;
-  height: 0;
-  border-left: 3.5px solid transparent;
-  border-right: 3.5px solid transparent;
-  border-top: 4px solid currentColor;
-  opacity: 0.5;
-  font-size: 0;
-}
-
-.tool:hover .caret,
-.tool.open .caret,
-.tool.active .caret {
-  opacity: 0.9;
-}
-
-/* -------------------- 子弹层 -------------------- */
+/* -------------------- 工具变体（面板顶部） -------------------- */
 
 /*
- * 定位父元素是 .rail（position: relative），用 JS 算出的
- * left/top 飘到按钮右侧。
+ * 当前分组内的具体工具（画笔/橡皮/抓手、矩形/椭圆/直线/箭头/填充…）。
+ * 放在面板最顶部、颜色之上：先选"画什么"，再调"什么颜色"。
  *
- * 为什么不放在 .rail-tools 里：那个容器有 overflow-y: auto，
- * 弹出内容会被整个裁掉（这是最容易踩的坑）。
+ * 为什么不做向右弹出的浮层：面板紧贴 rail 右侧（panel 从 x=74 起），
+ * 任何"向右弹出"的浮层都会压在面板底下；rail 自身还有
+ * overflow:hidden + z-index:15 的层叠上下文，浮层 z-index 提再高
+ * 也被关在 rail 里出不来。放进面板是最稳的做法。
+ *
+ * auto-fit 让 2/3/5 个按钮都能自己铺满整行，不用写死列数。
  */
-.flyout {
-  position: fixed;
-  z-index: 60;
-  min-width: 132px;
-  padding: 6px;
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
-  animation: flyout-in 0.12s var(--ease);
-  -webkit-app-region: no-drag;
+.variant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+  gap: 4px;
 }
 
-@keyframes flyout-in {
-  from { opacity: 0.4; transform: translateX(-4px); }
-  to   { opacity: 1; transform: none; }
-}
-
-.flyout-title {
-  padding: 3px 8px 6px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.7px;
-  text-transform: uppercase;
-  color: var(--text-mute);
-}
-
-.flyout-items {
+.variant-btn {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-}
-
-.flyout-item {
-  display: flex;
   align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 7px 9px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 2px 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: var(--bg-elev-2);
   color: var(--text-dim);
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
-  text-align: left;
   -webkit-app-region: no-drag;
-  transition: background 0.13s, color 0.13s;
+  transition: background 0.13s, border-color 0.13s, color 0.13s;
 }
 
-.flyout-item svg {
+.variant-btn svg {
   flex: 0 0 auto;
 }
 
-.flyout-item:hover {
+.variant-btn:hover {
   background: var(--bg-hover);
+  border-color: var(--border);
   color: var(--text);
 }
 
-.flyout-item.active {
+.variant-btn.active {
   background: var(--accent-soft);
-  color: #9cc0ff;
-}
-
-.flyout-item .fi-label {
-  flex: 1;
-}
-
-/* 右侧的快捷键提示 */
-.flyout-item .fi-key {
-  font-family: ui-monospace, Consolas, monospace;
-  font-size: 10px;
-  color: var(--text-mute);
-  padding: 1px 5px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-}
-
-.flyout-item.active .fi-key {
-  color: #9cc0ff;
   border-color: var(--accent-line);
+  color: #9cc0ff;
 }
 
 /* -------------------- 属性面板头部 -------------------- */

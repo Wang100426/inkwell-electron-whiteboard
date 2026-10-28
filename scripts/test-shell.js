@@ -12,7 +12,7 @@
  *   F. 应用图标用的是 assets/icon.png（不再是无意义的内联 SVG）
  *   G. 拖拽区正确：rail 可拖，但按钮全部 no-drag
  *   H. 滚动条风格统一（全局唯一定义，两处颜色一致）
- *   I. 四个分组按钮 + 子弹层选具体工具（1.3.0 精简）
+ *   I. 四个分组按钮 + 面板顶部工具变体区（1.3.1，替代被遮挡的子弹层）
  *
  * 用法：env -u ELECTRON_RUN_AS_NODE npx electron scripts/test-shell.js
  *      （或 npm run test:shell）
@@ -30,7 +30,7 @@ app.commandLine.appendSwitch('no-sandbox');
 
 const ROOT = path.join(__dirname, '..');
 
-ipcMain.handle('app:info', () => ({ version: '1.3.0', platform: process.platform, electron: process.versions.electron }));
+ipcMain.handle('app:info', () => ({ version: '1.3.1', platform: process.platform, electron: process.versions.electron }));
 ipcMain.handle('file:save', () => ({ ok: false }));
 ipcMain.on('app:health', () => {});
 ipcMain.on('app:trace', () => {});
@@ -119,8 +119,14 @@ app.whenReady().then(async () => {
       groups: Array.from(document.querySelectorAll('.rail .tool.tool-group')).map((el) => el.getAttribute('data-group')),
       groupedCount: document.querySelectorAll('.rail .tool.tool-group').length,
       legacyToolCount: document.querySelectorAll('.rail .tool:not(.tool-group)').length,
-      hasFlyout: !!q('flyout'),
-      flyoutHidden: !!(q('flyout') && q('flyout').hidden),
+      /*
+       * 1.3.1：组内工具从「向右弹出的子弹层」改为「面板顶部的变体区」。
+       * 子弹层被面板压住的 bug 见 #variantGroup 相关断言。
+       */
+      hasVariantGroup: !!q('variantGroup'),
+      hasVariantItems: !!q('variantItems'),
+      flyoutGone: !q('flyout'),
+      caretGone: document.querySelectorAll('.rail .tool .caret').length === 0,
       // 自绘窗口按钮
       winBtns: {
         min: !!q('btnMinimize'), max: !!q('btnMaximize'), close: !!q('btnWinClose'),
@@ -161,13 +167,15 @@ app.whenReady().then(async () => {
     ['select', 'draw', 'shape', 'text'].every((g) => dom.groups.includes(g)) && dom.groupedCount === 4,
     dom.groups
   );
-  check('子弹层容器存在且默认隐藏', dom.hasFlyout && dom.flyoutHidden);
+  check('变体区容器存在（面板顶部）', dom.hasVariantGroup && dom.hasVariantItems);
+  check('旧的子弹层已彻底移除', dom.flyoutGone);
+  check('分组按钮不再挂展开小三角', dom.caretGone);
 
   check('自绘三个窗口按钮存在', dom.winBtns.min && dom.winBtns.max && dom.winBtns.close);
   check('窗口按钮位于 stage 内', dom.winBtns.inStage);
   check('preload 提供 minimizeWindow', dom.winBtns.minimizeCalled);
   check('旧 gridToggle 开关已删除', dom.gridToggleGone);
-  check('版本号已升到 1.3.0', dom.version === '1.3.0', dom.version);
+  check('版本号已升到 1.3.1', dom.version === '1.3.1', dom.version);
 
   check('应用图标用 assets/icon.png', dom.brandImg && /icon\.png$/.test(dom.brandImg.src), dom.brandImg);
   check('图标资源实际加载成功', dom.brandImg && dom.brandImg.natural > 0, dom.brandImg && dom.brandImg.natural);
@@ -251,117 +259,160 @@ app.whenReady().then(async () => {
   check('setGrid(true) 生效且图标同步', grid.afterSetTrue === true && grid.activeAfterSetTrue === true);
   check('setGrid(false) 生效且图标同步', grid.afterSetFalse === false && grid.activeAfterSetFalse === false);
 
-  /* ---------- I. 分组按钮 + 子弹层（1.3.0 左侧栏精简） ---------- */
+  /* ---------- I. 分组按钮 + 面板内工具变体（1.3.1） ---------- */
   /*
-   * 左侧栏从 11 个平铺工具精简为 4 个分组按钮，多工具分组靠子弹层选具体工具。
-   * 这里走真实 DOM 点击，验证：
-   *   1. 单工具分组（选择）直接切，不弹子弹层
-   *   2. 多工具分组点击后子弹层打开、列出组内全部工具、按钮高亮 .open
-   *   3. 选中子弹层里的项 → 工具切换 + 记住选择 + 子弹层收起
-   *   4. 再点主按钮 → 回到"记住的工具"
-   *   5. Esc / 点空白处收起
+   * 左侧栏是 4 个分组按钮，组内具体工具铺在面板顶部、颜色之上。
+   *
+   * 这里同时守住 1.3.0 那个「严重 bug」：当时工具列表是向右弹出的浮层，
+   * 定位在 rail 右边缘 +6px，而面板正好从 x=74 起 —— 浮层整块压进面板底下，
+   * DOM 一切正常（hidden=false、items 齐全）但用户完全看不见。
+   * 所以下面除了断言结构，还要断言**几何顺序**与**命中测试**。
    */
   const groupBtn = (g) => `document.querySelector('.rail-tools .tool[data-group="${g}"]')`;
-  const flyoutOpen = `!document.getElementById('flyout').hidden`;
-  const flyoutTools = `Array.from(document.querySelectorAll('#flyoutItems .flyout-item')).map(b => b.dataset.tool)`;
-  const toolState = `window.__inkwell.renderer.tool || window.__inkwell.state && window.__inkwell.state.tool`;
+  const variantHidden = `document.getElementById('variantGroup').hidden`;
+  const variantTools = `Array.from(document.querySelectorAll('#variantItems .variant-btn')).map(b => b.dataset.tool)`;
 
-  // 1) 单工具分组：选择
+  // 1) 单工具分组：选择 —— 变体区应隐藏
   const sel = await evalJs(`
     const out = {};
     ${groupBtn('select')}.click();
-    out.openAfterSelect = ${flyoutOpen};
     out.tool = window.__inkwell.state.tool;
+    out.variantHidden = ${variantHidden};
     return out;
   `);
-  check('点「选择」直接切工具，不弹子弹层', sel.tool === 'select' && sel.openAfterSelect === false, sel);
+  check('点「选择」直接切工具', sel.tool === 'select', sel.tool);
+  check('选择分组不显示变体区', sel.variantHidden === true);
 
   // 2) 多工具分组：图形
   const g1 = await evalJs(`
     const out = {};
     ${groupBtn('shape')}.click();
-    out.open = ${flyoutOpen};
-    out.items = ${flyoutTools};
-    out.btnOpen = ${groupBtn('shape')}.classList.contains('open');
-    out.title = document.getElementById('flyoutTitle').textContent;
+    out.hidden = ${variantHidden};
+    out.items = ${variantTools};
+    out.label = document.getElementById('variantLabel').textContent;
     out.tool = window.__inkwell.state.tool;
     return out;
   `);
-  check('点「图形」打开子弹层', g1.open === true, g1);
-  check('子弹层列出组内 5 个工具', g1.items.length === 5, g1.items);
+  check('点「图形」显示变体区', g1.hidden === false, g1);
+  check('变体区列出组内 5 个工具', g1.items.length === 5, g1.items);
   check(
-    '子弹层含 矩形/椭圆/直线/箭头/填充',
+    '变体区含 矩形/椭圆/直线/箭头/填充',
     ['rect', 'ellipse', 'line', 'arrow', 'fill'].every((t) => g1.items.includes(t)),
     g1.items
   );
-  check('子弹层标题 = 图形', g1.title === '图形', g1.title);
-  check('主按钮标记 .open', g1.btnOpen === true);
-  check('打开的同时工具已切到组内工具', g1.tool === 'rect', g1.tool);
+  check('变体区标题 = 图形', g1.label === '图形', g1.label);
+  check('切到分组时自带组内默认工具', g1.tool === 'rect', g1.tool);
 
-  // 3) 选子弹层里的「椭圆」
+  // 3) 几何：变体区必须在面板里，且在颜色之上（不重叠）
+  const geoVariant = await evalJs(`
+    const vg = document.getElementById('variantGroup');
+    const cg = document.getElementById('colorGroup');
+    const panel = document.getElementById('panel');
+    const vb = vg.getBoundingClientRect();
+    const cb = cg.getBoundingClientRect();
+    const pb = panel.getBoundingClientRect();
+    const rail = document.getElementById('rail').getBoundingClientRect();
+    return {
+      inPanel: panel.contains(vg),
+      // 变体区左边缘应在面板内（也就是在 rail 右侧之外）
+      leftOfPanel: Math.round(vb.left), rightOfRail: Math.round(rail.right),
+      variantTop: Math.round(vb.top), variantBottom: Math.round(vb.bottom),
+      colorTop: Math.round(cb.top),
+      overlapColor: vb.bottom > cb.top + 1,
+    };
+  `);
+  check('变体区在面板内（不在 rail 里）', geoVariant.inPanel === true, geoVariant);
+  check('变体区完整位于 rail 右侧（不会被 rail 的 overflow 裁掉）',
+    geoVariant.leftOfPanel >= geoVariant.rightOfRail, geoVariant);
+  check('变体区在颜色区上方且不重叠',
+    geoVariant.variantBottom <= geoVariant.colorTop && geoVariant.overlapColor === false, geoVariant);
+
+  // 4) 每个变体按钮都能真正被点中（elementFromPoint 命中自身）—— 1.3.0 就是栽在这
+  const hitTest = await evalJs(`
+    const btns = Array.from(document.querySelectorAll('#variantItems .variant-btn'));
+    return btns.map((b) => {
+      const r = b.getBoundingClientRect();
+      const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { tool: b.dataset.tool, hitSelf: !!(el && (el === b || b.contains(el))) };
+    });
+  `);
+  check('变体按钮全部可被真实命中（无遮挡）',
+    hitTest.length === 5 && hitTest.every((h) => h.hitSelf),
+    hitTest.filter((h) => !h.hitSelf));
+
+  // 5) 点变体区里的「椭圆」→ 切工具 + 高亮 + 左侧栏图标同步
   const g2 = await evalJs(`
-    const out = {};
-    document.querySelector('#flyoutItems .flyout-item[data-tool="ellipse"]').click();
-    out.tool = window.__inkwell.state.tool;
-    out.open = ${flyoutOpen};
-    out.btnOpen = ${groupBtn('shape')}.classList.contains('open');
-    return out;
+    document.querySelector('#variantItems .variant-btn[data-tool="ellipse"]').click();
+    const face = document.querySelector('.rail-tools .tool[data-group="shape"] .tool-face');
+    return {
+      tool: window.__inkwell.state.tool,
+      active: (document.querySelector('#variantItems .variant-btn.active') || {}).dataset.tool,
+      railFace: face ? face.dataset.face : null,
+      stillVisible: ${variantHidden} === false,
+    };
   `);
-  check('选子弹层项后工具切到椭圆', g2.tool === 'ellipse', g2.tool);
-  check('选完子弹层自动收起', g2.open === false);
-  check('收起后主按钮 .open 移除', g2.btnOpen === false);
+  check('点变体按钮切到椭圆', g2.tool === 'ellipse', g2.tool);
+  check('变体区高亮当前工具', g2.active === 'ellipse', g2.active);
+  check('左侧栏分组图标同步成椭圆', g2.railFace === 'ellipse', g2.railFace);
+  check('选完变体区仍然可见（不是一次性浮层）', g2.stillVisible === true);
 
-  // 4) 再点主按钮 → 记住的是椭圆
+  // 6) 已在组内时再点分组按钮 → 保持当前工具，不被重置
   const g3 = await evalJs(`
-    const out = {};
     ${groupBtn('shape')}.click();
-    out.tool = window.__inkwell.state.tool;
-    out.open = ${flyoutOpen};
-    return out;
+    return window.__inkwell.state.tool;
   `);
-  check('再点「图形」回到上次选的椭圆', g3.tool === 'ellipse', g3.tool);
-  check('并重新打开子弹层', g3.open === true);
+  check('在组内再点分组按钮不会重置工具', g3 === 'ellipse', g3);
 
-  // 5) 子弹层里当前工具应有 .active 高亮
+  // 7) 去别的分组再回来 → 记住的是椭圆
   const g4 = await evalJs(`
-    return document.querySelector('#flyoutItems .flyout-item[data-tool="ellipse"]').classList.contains('active');
-  `);
-  check('子弹层内当前工具高亮 .active', g4 === true);
-
-  // 6) Esc 收起
-  const g5 = await evalJs(`
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    return ${flyoutOpen};
-  `);
-  check('Esc 收起子弹层', g5 === false);
-
-  // 7) 文本分组：文本 / 便签
-  const g6 = await evalJs(`
-    const out = {};
-    ${groupBtn('text')}.click();
-    out.items = ${flyoutTools};
-    out.tool = window.__inkwell.state.tool;
-    // 点空白处收起
-    document.body.click();
-    out.openAfterOutside = ${flyoutOpen};
-    return out;
-  `);
-  check('文本分组含 文本/便签', g6.items.length === 2 && g6.items.includes('text') && g6.items.includes('note'), g6.items);
-  check('文本分组默认切到文本工具', g6.tool === 'text', g6.tool);
-  check('点空白处收起子弹层', g6.openAfterOutside === false);
-
-  // 8) 自由绘画分组：画笔 / 橡皮 / 抓手
-  const g7 = await evalJs(`
     ${groupBtn('draw')}.click();
-    return ${flyoutTools};
+    const mid = window.__inkwell.state.tool;
+    ${groupBtn('shape')}.click();
+    return { mid, back: window.__inkwell.state.tool };
+  `);
+  check('切到绘画分组用的是组内工具', g4.mid === 'pen', g4.mid);
+  check('回到图形分组恢复上次选的椭圆', g4.back === 'ellipse', g4.back);
+
+  // 8) 文本分组：文本 / 便签
+  const g5 = await evalJs(`
+    ${groupBtn('text')}.click();
+    return { items: ${variantTools}, tool: window.__inkwell.state.tool,
+             hidden: ${variantHidden} };
+  `);
+  check('文本分组含 文本/便签',
+    g5.items.length === 2 && g5.items.includes('text') && g5.items.includes('note'), g5.items);
+  check('文本分组默认切到文本工具', g5.tool === 'text', g5.tool);
+
+  // 9) 自由绘画分组：画笔 / 橡皮 / 抓手
+  const g6 = await evalJs(`
+    ${groupBtn('draw')}.click();
+    return ${variantTools};
   `);
   check('绘画分组含 画笔/橡皮/抓手',
-    g7 && g7.length === 3 && ['pen', 'eraser', 'hand'].every((t) => g7.includes(t)),
-    g7
+    g6 && g6.length === 3 && ['pen', 'eraser', 'hand'].every((t) => g6.includes(t)),
+    g6
   );
 
+  // 10) 快捷键切工具时，变体区也要跟着切分组并高亮
+  //     （renderVariants 挂在 setTool 里，而不是只挂在按钮 click 上）
+  const g7 = await evalJs(`
+    window.__inkwell.setTool('pen');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'o', code: 'KeyO', bubbles: true }));
+    return {
+      tool: window.__inkwell.state.tool,
+      group: window.__inkwell.state.toolGroup,
+      hidden: ${variantHidden},
+      active: (document.querySelector('#variantItems .variant-btn.active') || {}).dataset
+        ? document.querySelector('#variantItems .variant-btn.active').dataset.tool : null,
+      label: document.getElementById('variantLabel').textContent,
+    };
+  `);
+  check('按 O 切到椭圆', g7.tool === 'ellipse', g7.tool);
+  check('快捷键切工具后变体区跟着切组', g7.hidden === false && g7.label === '图形', g7.label);
+  check('快捷键切工具后变体区高亮同步', g7.active === 'ellipse', g7.active);
+
   // 收尾：切回矩形，避免影响后续断言
-  await evalJs(`document.getElementById('flyout').hidden = true; window.__inkwell.setTool('rect'); return 1;`);
+  await evalJs(`window.__inkwell.setTool('rect'); return 1;`);
 
   /* ---------- B. 点击真实按钮是否触发 IPC ---------- */
   await evalJs(`document.getElementById('btnMinimize').click(); return 1;`);
