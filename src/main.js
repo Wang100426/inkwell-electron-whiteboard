@@ -71,7 +71,12 @@ function diag(msg) {
 applyGpuFallback();
 
 diag('=== 启动 ===');
-diag('Electron ' + process.versions.electron + ' / Node ' + process.versions.node);
+/*
+ * 版本号必须出现在日志第一屏。
+ * 用户报障时，"你跑的是哪一版"是第一要问的问题 —— 之前日志里只有
+ * Electron/Node 版本，没有应用版本，排查时只能靠猜。
+ */
+diag('InkWell ' + app.getVersion() + ' / Electron ' + process.versions.electron + ' / Node ' + process.versions.node);
 diag('ELECTRON_RUN_AS_NODE=' + JSON.stringify(process.env.ELECTRON_RUN_AS_NODE));
 diag('命令行: ' + process.argv.slice(1).join(' '));
 

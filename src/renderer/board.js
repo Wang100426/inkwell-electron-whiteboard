@@ -39,7 +39,7 @@ const FILLABLE_TYPES = ['rect', 'ellipse'];
  * （主进程的 app.getVersion() 读的是 package.json，是权威值；
  *  这个常量只用于写进文件，供**旧版本应用**判断能否打开。）
  */
-const INKWELL_APP_VERSION = '1.3.1';
+const INKWELL_APP_VERSION = '1.3.2';
 
 /** 图形结构版本：字段发生不兼容变更时才 +1 */
 const SHAPES_VERSION = 1;

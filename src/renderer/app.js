@@ -2,7 +2,7 @@
 
 const { readPressure, pressureToWidth } = require('./geometry');
 
-const { BoardStore, BoardRenderer, hitTest, boundsOf, makeBase, TransformShapesCommand, snapshot, FILLABLE_TYPES, NOTE_W, NOTE_H, reorderIds, INKWELL_APP_VERSION, canOpenFileVersion } = require('./board');
+const { BoardStore, BoardRenderer, hitTest, boundsOf, makeBase, TransformShapesCommand, snapshot, FILLABLE_TYPES, NOTE_W, NOTE_H, NOTE_COLOR, reorderIds, INKWELL_APP_VERSION, canOpenFileVersion } = require('./board');
 const { applyErase } = require('./eraser');
 
 /* ============================ DOM ============================ */
@@ -315,8 +315,18 @@ function setTool(tool) {
   $('pressureGroup').hidden = !['pen', 'eraser'].includes(tool);
   // 选择工具下不显示描边/线宽这类"画新东西"的设置
   const isSelect = tool === 'select';
+  /*
+   * 便签也隐藏颜色区。
+   *
+   * 便签的底色（NOTE_COLOR）和文字色都是写死的，色板对它**完全无效** ——
+   * 留着只会让人以为"便签也能改色 / 便签的颜色就是填充色"。
+   * 用户报的"填充色变成便签黄"，混淆源头就在这里：同一块色板在
+   * 画笔（描边色）、填充（填充色）、便签（无效）三种语义间来回切换。
+   * 便签下直接不显示，语义就唯一了。
+   */
+  const isNote = tool === 'note';
   $('selectGroup').hidden = !isSelect;
-  $('colorGroup').hidden = isSelect;
+  $('colorGroup').hidden = isSelect || isNote;
   $('widthGroup').hidden = isSelect || ['text', 'note'].includes(tool);
   $('opacityGroup').hidden = isSelect;
 
@@ -384,6 +394,7 @@ function buildSwatches() {
 function setSwatchColor(c) {
   if (state.tool === 'fill') {
     state.style.fill = c;
+    trace('填充色(色板) -> ' + c);
     syncStyleUI();
     return;
   }
@@ -430,6 +441,22 @@ function updateDeviceHint() {
 
 function syncStyleUI() {
   const isFill = state.tool === 'fill';
+
+  /*
+   * 填充色守卫。
+   *
+   * 便签的黄色 NOTE_COLOR 只属于「便签图形」，不该出现在「填充色」这个
+   * **工具状态**里。色板里根本没有 #f5c451（那是 #ffc93d），所以一旦
+   * state.style.fill 等于它，只可能是被代码写脏了 —— 用户看到的现象就是
+   * 「填好的颜色莫名其妙变成便签黄」。
+   *
+   * 这里直接回退到默认蓝并留 trace：既自愈，又能在日志里留下证据。
+   */
+  if (state.style.fill === NOTE_COLOR) {
+    state.style.fill = '#4c8dff';
+    trace('!! 填充色被污染成便签黄 ' + NOTE_COLOR + '，已回退到 #4c8dff');
+  }
+
   // 色板高亮跟着当前用途走：填充工具看填充色，其余看描边色
   const cur = isFill ? state.style.fill : state.style.color;
   const active = cur;
@@ -522,6 +549,7 @@ function applyFill(wx, wy) {
   const before = snapshot(store.shapes);
   hit.fillEnabled = next;
   if (next) hit.fill = color;
+  trace('applyFill type=' + hit.type + ' color=' + color + ' enabled=' + next);
   store.history.push(new TransformShapesCommand(store, before, snapshot(store.shapes)));
   store.history.seal();
   store.emit('edit');
@@ -1556,6 +1584,7 @@ document.querySelectorAll('.rail-tools .tool').forEach((btn) => {
 $('colorPicker').addEventListener('input', (e) => {
   if (state.tool === 'fill') {
     state.style.fill = e.target.value;
+    trace('填充色(取色器) -> ' + e.target.value);
     syncStyleUI();
     return;
   }
@@ -1565,6 +1594,7 @@ $('colorPicker').addEventListener('input', (e) => {
 // 清除填充：把当前填充色设为无。之后点图形即取消其填充。
 $('btnNoFill').addEventListener('click', () => {
   state.style.fill = 'transparent';
+  trace('填充色 -> transparent（清除填充）');
   syncStyleUI();
   toast('填充色已设为「无」，点图形即可清除填充');
 });
@@ -1722,7 +1752,7 @@ window.inkwell.getInfo().then((info) => {
 
 // 暴露给自动化测试 / 控制台调试使用
 window.__inkwell = {
-  version: '1.3.1',
+  version: '1.3.2',
   store,
   renderer,
   state,

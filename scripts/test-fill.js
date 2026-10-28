@@ -24,7 +24,7 @@ app.commandLine.appendSwitch('disable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 app.commandLine.appendSwitch('no-sandbox');
 
-ipcMain.handle('app:info', () => ({ version: '1.3.1', platform: process.platform, electron: process.versions.electron }));
+ipcMain.handle('app:info', () => ({ version: '1.3.2', platform: process.platform, electron: process.versions.electron }));
 /* 1.2.0 无边框窗口：渲染层会查询最大化状态，测试环境补个 stub 避免报错 */
 ipcMain.handle('window:is-maximized', () => false);
 ipcMain.on('window:minimize', () => {});
@@ -133,7 +133,84 @@ app.whenReady().then(async () => {
     check('便签带填充标记', r.enabled === true, r);
   }
 
-  /* ---------- 4. 油漆桶：未填充 → 填充 ---------- */
+  /* ---------- 3b. 完整真实序列：上色 → 便签 → 回到填充 ---------- */
+  /*
+   * 用户报障："填充了一个颜色以后，使用便签，然后回来原本填充的颜色
+   * 变成了便签的黄色"。
+   *
+   * 上面第 2 组只测了"切工具"，这组把整条真实链路走完：
+   *   矩形 → 填充工具选色 → 点矩形上色 → 便签（真的写一张）
+   *   → 切回填充
+   * 三层状态都要守住：工具填充色 / 已填图形的 fill / 便签自己的 fill。
+   */
+  {
+    const r = await js(PRELUDE + [
+      'store.replaceAll([]); store.history.clear();',
+      // 1. 画矩形
+      'setTool("rect");',
+      'const rect = drawRect(200, 200, 420, 360);',
+      // 2. 填充工具，用色板选一个明确的绿色，然后点矩形上色
+      'setTool("fill");',
+      'pickFill("#38d39f");',
+      'fire("pointerdown", 310, 280); fire("pointerup", 310, 280);',
+      'const filled = { styleFill: state.style.fill, rectFill: rect.fill, rectOn: rect.fillEnabled };',
+      // 3. 便签：真的写一张（Ctrl+Enter 提交）
+      'setTool("note");',
+      'const colorHiddenForNote = document.getElementById("colorGroup").hidden;',
+      'fire("pointerdown", 700, 300); fire("pointerup", 700, 300);',
+      'const ta = document.getElementById("textInput");',
+      'ta.value = "便签内容";',
+      'ta.dispatchEvent(new KeyboardEvent("keydown", { key:"Enter", ctrlKey:true, bubbles:true }));',
+      'const note = store.shapes.find(s => s.type === "note");',
+      // 4. 回到填充
+      'setTool("fill");',
+      'const sw = document.querySelector(".swatch.active");',
+      'return {',
+      '  filled,',
+      '  colorHiddenForNote,',
+      '  noteFill: note && note.fill,',
+      '  styleFillBack: state.style.fill,',
+      '  rectFillBack: rect.fill,',
+      '  rectOnBack: rect.fillEnabled,',
+      '  activeSwatch: sw ? sw.dataset.color : null,',
+      '  colorHex: document.getElementById("colorHex").textContent,',
+      '  colorShownForFill: document.getElementById("colorGroup").hidden === false,',
+      '};',
+    ].join('\n'));
+
+    // 上色这一步本身要成立
+    check('上色后工具填充色 = 选的绿', r.filled && r.filled.styleFill === '#38d39f', r.filled);
+    check('上色后矩形 fill = 选的绿', r.filled && r.filled.rectFill === '#38d39f', r.filled);
+    check('上色后矩形 fillEnabled = true', r.filled && r.filled.rectOn === true, r.filled);
+
+    // 便签这一步不能有任何回写
+    check('便签自己仍是固定黄', r.noteFill === '#f5c451', r.noteFill);
+    check('便签工具下不显示颜色区（色板对它无效）', r.colorHiddenForNote === true, r.colorHiddenForNote);
+
+    // 回到填充：工具状态与图形数据都没被污染
+    check('回到填充后工具填充色未被污染', r.styleFillBack === '#38d39f', r.styleFillBack);
+    check('回到填充后矩形填充色未被污染', r.rectFillBack === '#38d39f', r.rectFillBack);
+    check('回到填充后矩形仍处于已填充', r.rectOnBack === true, r.rectOnBack);
+    check('回到填充后色板高亮回到绿的色块', r.activeSwatch === '#38d39f', r.activeSwatch);
+    check('回到填充后面板文字显示填充色', r.colorHex === '#38D39F', r.colorHex);
+    check('回到填充后颜色区重新显示', r.colorShownForFill === true);
+  }
+
+  /* ---------- 3c. 填充色守卫生效（防未来回归） ---------- */
+  {
+    const r = await js(PRELUDE + [
+      'store.replaceAll([]); store.history.clear();',
+      'setTool("fill");',
+      // 直接模拟"被别的代码写脏成便签黄"
+      'state.style.fill = "#f5c451";',
+      // setTool 末尾会调 syncStyleUI，借它触发守卫
+      'setTool("fill");',
+      'return { fill: state.style.fill };',
+    ].join('\n'));
+    check('填充色一旦被污染成便签黄会自动回退', r.fill === '#4c8dff', r.fill);
+  }
+
+
   {
     const r = await js(PRELUDE + [
       'store.replaceAll([]); store.history.clear();',
