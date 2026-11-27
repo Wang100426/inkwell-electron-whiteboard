@@ -24,7 +24,7 @@ app.commandLine.appendSwitch('disable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 app.commandLine.appendSwitch('no-sandbox');
 
-ipcMain.handle('app:info', () => ({ version: '1.3.3', platform: process.platform, electron: process.versions.electron }));
+ipcMain.handle('app:info', () => ({ version: '1.4.0', platform: process.platform, electron: process.versions.electron }));
 /* 1.2.0 无边框窗口：渲染层会查询最大化状态，测试环境补个 stub 避免报错 */
 ipcMain.handle('window:is-maximized', () => false);
 ipcMain.on('window:minimize', () => {});
@@ -408,26 +408,23 @@ app.whenReady().then(async () => {
     check('按 F 切到填充工具', r.tool === 'fill', r);
   }
 
-  /* ---------- 13. UI：填充工具在「图形」分组的变体区里 ---------- */
+  /* ---------- 13. UI：填充工具在底部工具栏里，一级可达 ---------- */
   {
-    // 1.3.1 起：左侧栏只有 4 个分组按钮，填充属于「图形」分组，
-    // 具体工具铺在面板顶部的 #variantGroup（不再有弹出浮层）。
+    // 1.4.0 起：工具全部平铺在画布底部悬浮栏（.dock），单击直达。
     const r = await js([
-      'const g = document.querySelector(".rail-tools .tool[data-group=\\"shape\\"]");',
-      'if (!g) return { groupExists: false };',
-      'g.click();',
-      'const box = document.getElementById("variantGroup");',
-      'const b = document.querySelector("#variantItems .variant-btn[data-tool=\\"fill\\"]");',
-      'if (!b) return { groupExists: true, visible: !box.hidden, exists: false };',
+      'const b = document.querySelector("#dock .dock-btn[data-tool=\\"fill\\"]");',
+      'if (!b) return { exists: false };',
+      'b.click();',
       'const br = b.getBoundingClientRect();',
       'const el = document.elementFromPoint(br.left + br.width / 2, br.top + br.height / 2);',
-      'return { groupExists: true, exists: true, visible: !box.hidden,',
-      '         label: b.textContent.trim(),',
+      'return { exists: true,',
+      '         tool: window.__inkwell.state.tool,',
+      '         active: b.classList.contains("active"),',
       '         hitSelf: !!(el && (el === b || b.contains(el))) };',
     ].join('\n'));
-    check('图形分组变体区里有填充按钮', r.groupExists && r.exists === true, r);
-    check('填充按钮标签 = 填充', r.label === '填充', r.label);
-    check('变体区可见且填充按钮可点中', r.visible === true && r.hitSelf === true, r);
+    check('底栏里有填充按钮', r.exists === true, r);
+    check('点一下即切到填充工具', r.tool === 'fill' && r.active === true, r);
+    check('填充按钮可被真实命中', r.hitSelf === true, r);
   }
 
   if (errors.length) {

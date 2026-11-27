@@ -131,25 +131,18 @@ body {
 .rail {
   width: var(--tool-w);
   flex: 0 0 auto;
-  /* 子弹层要绝对定位在它旁边，这里是定位参考（实际用 fixed + JS 算坐标） */
   position: relative;
   background: var(--bg-elev);
   border-right: 1px solid var(--border);
   /*
-   * 1.2.0 踩坑：rail 里塞了「图标 + 撤销重做 + 缩放 + 工具 + 文件操作」，
-   * 内容总高超过 900px 窗口的可视高度时，底部的网格/导出/打开/保存
-   * 会被挤出视口（实测 btnGrid 落在 y=936、btnSave 落在 y=1084，窗口只有 886 高），
-   * 表现为"这几个按钮完全点不到"。
-   *
-   * 处理：分三段纵向布局 + 中间工具区独立滚动。
-   *   .rail-head（图标/撤销/缩放）  固定，不滚
-   *   .rail-tools（工具区）          flex:1 + overflow-y:auto，唯一滚动区
+   * 两段式布局（1.4.0 起）：
+   *   .rail-head（图标/撤销/缩放）  固定
+   *   .rail-spacer                  弹性占位，把文件操作推到底部
    *   .rail-actions（文件操作）      固定贴底，永远可见
-   * 这样任何窗口高度下，文件操作都不会被挤出去。
    *
-   * 1.3.0 又把工具区从 11 个平铺按钮精简为 4 个分组按钮（子弹层选具体工具），
-   * 溢出压力进一步减小；三段式布局保留 —— 它是"溢出"的正解，
-   * margin-top:auto 只在空间富余时贴底，救不了溢出。
+   * 绘图工具已挪到画布底部的悬浮工具栏（.dock），
+   * rail 里不再有可滚动段 —— 也就不存在"内容溢出把按钮挤出视口"的问题。
+   * （1.2.0 曾踩过：按钮落到 y=1084 而窗口只有 886 高。）
    */
   padding: 0;
   display: flex;
@@ -183,26 +176,10 @@ body {
   border-bottom: 1px solid var(--border-soft);
 }
 
-/* 中间分组：绘图工具。唯一可滚动段，窗口不够高时只滚这里 */
-.rail-tools {
+/* 弹性占位：把贴底的文件操作推到 rail 底部 */
+.rail-spacer {
   flex: 1 1 auto;
-  min-height: 0;
-  width: 100%;
-  padding: 6px 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  /*
-   * 滚动条与右侧面板保持完全一致（颜色/圆角/内缩/hover 全走全局规则），
-   * 这里只把宽度调窄一档：窄栏本身只有 74px，9px 滚动条会压到 40px 的图标。
-   * **不要用 scrollbar-width: thin** —— 那条标准属性会整体接管渲染，
-   * 让下面的 ::-webkit-scrollbar-* 失效，两处风格就对不上了。
-   */
-  --sb-w: 7px;
-  --sb-inset: 1px;
+  min-height: 8px;
 }
 
 /* 底部分组：文件与视图操作。固定贴底，任何窗口高度都可见 */
@@ -482,117 +459,101 @@ body {
   min-height: 0;
 }
 
-/* 工具栏
- *
- * 注意：原来的 `.toolbar` 容器（独立 68px 左侧栏）在 1.2.0 已合并进
- * `.rail`（见文件上方），这里只保留 `.tool` 按钮本身的样式。
- * 误删 `.tool` 的样式会让所有绘图工具按钮变成无样式的裸按钮。
- */
+/* -------------------- 工具底栏（1.4.0） -------------------- */
 
-.tool {
-  position: relative;
+/*
+ * 画布底部中央的悬浮胶囊，11 个工具平铺、一级选择。
+ *
+ * 为什么放底部悬浮而不是左侧竖栏：工具是"手边的东西"，
+ * 现代绘图工具（Excalidraw / Freeform / Figma）都把工具放在画布内
+ * 靠近光标的位置；而且平铺之后**不再需要二级选择**
+ * （分组 / 子弹层 / 变体区在 1.3.x 里挨个试过，每一层都是误解的来源）。
+ *
+ * 挂在 .stage 内（absolute 定位，参照系是 stage），
+ * bottom 预留状态栏高度 + 间距，不会盖住状态栏。
+ *
+ * 动画注意（实测踩坑）：**入场动画不能挂在 dock 上**。
+ * 本机测试/离屏窗口里 CSS keyframe 会冻在第一帧，dock-in 的
+ * from 是 translateY(16px)，结果底栏被永久顶下去 16px、压住状态栏
+ * （实测 dock.bottom=584 vs 状态栏 top=581）。常驻 UI 的"出现"
+ * 一律不做 keyframe 入场；动效全部走 transition（hover 微抬、
+ * 按压缩放、active 圆点），transition 冻结无副作用。
+ */
+.dock {
+  position: absolute;
+  left: 50%;
+  /* 52 = 状态栏实际高度 ~39px + 13px 间距；写死实测值，别用"感觉差不多" */
+  bottom: 52px;
+  transform: translateX(-50%);
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 9px 4px 7px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  gap: 2px;
+  padding: 5px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  z-index: 40;
+  -webkit-app-region: no-drag;
+}
+
+.dock-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 10px;
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
-  font-family: inherit;
-  transition: background 0.14s, color 0.14s;
-}
-
-.tool svg {
-  width: 19px;
-  height: 19px;
-}
-
-.tool span {
-  font-size: 10.5px;
-  letter-spacing: 0.2px;
-}
-
-.tool:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-.tool.active {
-  background: var(--accent-soft);
-  border-color: var(--accent-line);
-  color: #9cc0ff;
-}
-
-.tool-sep {
-  height: 1px;
-  background: var(--border);
-  margin: 6px 10px;
-}
-
-/* 分组按钮的"当前工具面貌"图标容器 */
-.tool-face {
-  display: grid;
-  place-items: center;
-  width: 19px;
-  height: 19px;
-}
-
-/* -------------------- 工具变体（面板顶部） -------------------- */
-
-/*
- * 当前分组内的具体工具（画笔/橡皮/抓手、矩形/椭圆/直线/箭头/填充…）。
- * 放在面板最顶部、颜色之上：先选"画什么"，再调"什么颜色"。
- *
- * 为什么不做向右弹出的浮层：面板紧贴 rail 右侧（panel 从 x=74 起），
- * 任何"向右弹出"的浮层都会压在面板底下；rail 自身还有
- * overflow:hidden + z-index:15 的层叠上下文，浮层 z-index 提再高
- * 也被关在 rail 里出不来。放进面板是最稳的做法。
- *
- * auto-fit 让 2/3/5 个按钮都能自己铺满整行，不用写死列数。
- */
-.variant-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
-  gap: 4px;
-}
-
-.variant-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 8px 2px 6px;
-  border: 1px solid var(--border-soft);
-  border-radius: 7px;
-  background: var(--bg-elev-2);
-  color: var(--text-dim);
-  font-family: inherit;
-  font-size: 11px;
-  line-height: 1;
-  white-space: nowrap;
-  cursor: pointer;
   -webkit-app-region: no-drag;
-  transition: background 0.13s, border-color 0.13s, color 0.13s;
+  /* transition 管 hover/active 的颜色与微抬，比 keyframe 稳 */
+  transition: background 0.15s, color 0.15s, transform 0.15s;
 }
 
-.variant-btn svg {
-  flex: 0 0 auto;
+.dock-btn svg {
+  width: 19px;
+  height: 19px;
+  pointer-events: none;   /* 命中与 hover 都以按钮为准，别让 svg 分流 */
 }
 
-.variant-btn:hover {
+.dock-btn:hover {
   background: var(--bg-hover);
-  border-color: var(--border);
   color: var(--text);
+  transform: translateY(-1px);
 }
 
-.variant-btn.active {
+.dock-btn:active {
+  transform: translateY(0) scale(0.94);
+}
+
+.dock-btn.active {
   background: var(--accent-soft);
-  border-color: var(--accent-line);
   color: #9cc0ff;
+}
+
+/* 选中态的小圆点：active 色块 + 底部一点标识，比描边更轻 */
+.dock-btn.active::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: #9cc0ff;
+}
+
+/* 分组分隔线：选择 | 绘画 | 图形 | 文本 */
+.dock-sep {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 22px;
+  margin: 0 5px;
+  background: var(--border);
 }
 
 /* -------------------- 属性面板头部 -------------------- */
@@ -1123,12 +1084,8 @@ input[type='range']::-webkit-slider-thumb:active {
   place-items: center;
   background: rgba(8, 10, 14, 0.62);
   backdrop-filter: blur(3px);
-  animation: mask-in 0.14s ease-out;
-}
-
-@keyframes mask-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  /* 不做入场动画：遮罩是"必须立刻可见"的关键 UI，
+     keyframe 冻在 opacity:0 首帧会让确认框永久隐身，应用像卡死。 */
 }
 
 .modal {
@@ -1138,12 +1095,16 @@ input[type='range']::-webkit-slider-thumb:active {
   border: 1px solid var(--border);
   border-radius: 13px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  /*
+   * 入场动画只动 transform，不动 opacity（同 .text-editor 的规则）。
+   * opacity:0 首帧一旦冻结，弹窗永久隐身 —— 用户看到的不是动画，是卡死。
+   */
   animation: modal-in 0.18s var(--ease);
 }
 
 @keyframes modal-in {
-  from { opacity: 0; transform: translateY(10px) scale(0.97); }
-  to   { opacity: 1; transform: none; }
+  from { transform: translateY(10px) scale(0.97); }
+  to   { transform: none; }
 }
 
 .modal h3 {

@@ -10,8 +10,9 @@
   <div class="app">
     <div class="workspace">
       <!--
-        左侧栏（1.2.0）：撤掉原来的横向顶栏，所有功能竖向排成一条线，
-        从上到下依次是「应用图标 / 撤销重做 / 缩放 / 绘图工具 / 文件操作」。
+        左侧栏（1.4.0）：只保留「应用图标 / 撤销重做 / 缩放」和
+        贴底的「网格 / 适应窗口 / 导出 / 打开 / 保存」。
+        绘图工具已挪到画布底部的悬浮工具栏（#dock）—— 那才是手所在的地方。
         顶部与各部分之间的空隙兼作窗口拖拽区。
       -->
       <aside class="rail" id="rail">
@@ -47,53 +48,6 @@
         </div>
         </div>
 
-        <!--
-          中间区：绘图工具（1.3.0 精简为 4 个按钮）
-          选择 / 自由绘画 / 图形 / 文本
-
-          组内具体工具（画笔/橡皮、矩形/椭圆/直线/箭头/填充…）不在这里，
-          而是显示在**右侧面板顶部的「工具变体」区**（#variantGroup）。
-          主按钮的图标会随组内当前工具变化，一眼看出当前是什么。
-
-          为什么不做向右弹出的浮层：面板紧贴 rail 右边（panel 从 x=74 开始），
-          任何"向右弹出"的浮层都会压在面板下面；rail 本身还有 overflow:hidden
-          和 z-index:15 的层叠上下文，浮层即使把 z-index 提到很高也出不来。
-        -->
-        <div class="rail-tools" id="railTools">
-
-        <!-- 1. 选择 -->
-        <button class="tool tool-group" data-group="select" data-tool="select" title="选择 (V)">
-          <span class="tool-face" data-face="select">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l6.5 17 2.2-6.9 7.3-2.1z"/></svg>
-          </span>
-          <span>选择</span>
-        </button>
-
-        <!-- 2. 自由绘画：画笔 / 橡皮 / 抓手 -->
-        <button class="tool tool-group" data-group="draw" data-tool="pen" title="自由绘画 (B)" aria-haspopup="true">
-          <span class="tool-face" data-face="pen">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 10-10-3-3L5 16z"/><path d="M14 5l3 3"/></svg>
-          </span>
-          <span>绘画</span>
-        </button>
-
-        <!-- 3. 图形：矩形 / 椭圆 / 直线 / 箭头 / 填充 -->
-        <button class="tool tool-group" data-group="shape" data-tool="rect" title="图形 (R)" aria-haspopup="true">
-          <span class="tool-face" data-face="rect">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="6" width="16" height="12" rx="2"/></svg>
-          </span>
-          <span>图形</span>
-        </button>
-
-        <!-- 4. 文本：文本 / 便签 -->
-        <button class="tool tool-group" data-group="text" data-tool="text" title="文本 (T)" aria-haspopup="true">
-          <span class="tool-face" data-face="text">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6V4h14v2"/><path d="M12 4v16M9 20h6"/></svg>
-          </span>
-          <span>文本</span>
-        </button>
-        </div>
-
         <!-- 底部固定区：文件与视图操作，只有图标不配文字 -->
         <div class="rail-actions">
           <button class="btn-icon" id="btnGrid" title="网格 (G)" aria-label="网格">
@@ -114,25 +68,13 @@
         </div>
       </aside>
 
-      <!-- 属性面板：设置项随左侧栏当前分组切换 -->
+      <!-- 属性面板：设置项随当前工具切换 -->
       <aside class="panel" id="panel">
-        <!-- 当前分组标题，让面板和左侧栏的分组语义对上 -->
+        <!-- 当前工具名 + 图标 -->
         <div class="panel-head">
           <span class="panel-head-icon" id="panelHeadIcon"></span>
-          <span class="panel-head-name" id="panelHeadName">自由绘画</span>
+          <span class="panel-head-name" id="panelHeadName">画笔</span>
         </div>
-
-        <!--
-          工具变体（1.3.1）：当前分组内的具体工具。
-          放在面板最顶部、颜色之上 —— 先选"画什么"，再调"什么颜色"，
-          顺序也符合实际作画流程。
-
-          只读 currentGroup 的 tools；单工具分组（选择）整块隐藏。
-        -->
-        <section class="panel-group" id="variantGroup" hidden>
-          <h4 id="variantLabel">工具</h4>
-          <div class="variant-grid" id="variantItems"></div>
-        </section>
 
         <!-- 选择：只显示位置/删除相关，不显示画笔设置 -->
         <section class="panel-group" id="selectGroup" hidden>
@@ -204,6 +146,14 @@
       <!-- 画布 -->
       <main class="stage" id="stage">
         <canvas id="canvas"></canvas>
+
+        <!--
+          工具底栏（1.4.0）：11 个工具平铺在一个悬浮胶囊里，一级选择。
+          挂在画布底部中央 —— 手和眼睛都在画布上，工具就该在那儿。
+          按钮由 app.js 按 TOOL_GROUPS 生成（图标单一来源，分组间有分隔线）。
+          no-drag：stage 顶部是拖拽区，底栏必须显式排除。
+        -->
+        <div class="dock no-drag" id="dock" role="toolbar" aria-label="工具栏"></div>
 
         <!--
           自绘窗口控制按钮（1.2.0，替代被隐藏的 Windows 原生标题栏）。

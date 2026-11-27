@@ -17,12 +17,6 @@ const state = {
   tool: 'pen',
   // 当前分组（select / draw / shape / text），由 setTool 维护
   toolGroup: 'draw',
-  /*
-   * 每个分组"上一次选的具体工具"。
-   * 作用：子弹层里选了「椭圆」后，下次再点「图形」主按钮
-   * 直接回到椭圆，而不是永远回到矩形。
-   */
-  groupPick: { draw: 'pen', shape: 'rect', text: 'text' },
   style: {
     color: '#e8ecf4',
     // 填充色由「填充」工具使用；新图形一律无填充（见 makeBase）
@@ -293,32 +287,14 @@ function setTool(tool) {
   state.tool = tool;
   const group = TOOL_TO_GROUP[tool] || 'draw';
   state.toolGroup = group;
-  /*
-   * 记住"这个分组上次用的是谁"，供左侧栏主按钮图标与再次点分组时恢复。
-   * 放在 setTool 而不是只放在变体按钮的 click 里 —— 快捷键（R/O/L…）
-   * 切工具时也要记住，否则一按快捷键分组记忆就和实际脱节了。
-   */
-  if (TOOL_GROUPS[group] && TOOL_GROUPS[group].tools.length) {
-    state.groupPick[group] = tool;
-  }
 
   /*
-   * 主按钮高亮：按"所属分组"而不是"具体工具"。
-   * 例如选中「椭圆」时，高亮的是「图形」按钮 —— 因为用户点的是那个入口，
-   * 具体是组内哪一个由按钮上的图标体现。
+   * 底栏高亮：按**具体工具**精确点亮（底栏 11 个工具平铺，没有分组按钮了）。
+   * 高亮同步写在 setTool 里，快捷键（R/O/L…）和点击两条路都走这里，不会脱节。
    */
-  document.querySelectorAll('.rail-tools .tool').forEach((b) => {
-    b.classList.toggle('active', b.dataset.group === group);
+  document.querySelectorAll('#dock .dock-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.tool === tool);
   });
-
-  /*
-   * 主按钮的"局面图标"要换成组内当前工具：
-   * 选了橡皮后，绘画按钮显示橡皮图标，一眼看出当前状态。
-   * 如果用户手动选过（记住偏好），就用记住的那个。
-   */
-  syncGroupFaces();
-  // 组内工具铺在面板顶部（原"子弹层"的替代，见 renderVariants 注释）
-  renderVariants();
 
   stage.className = 'stage tool-' + tool;
   $('statusTool').textContent = TOOL_NAMES[tool] || tool;
@@ -348,41 +324,15 @@ function setTool(tool) {
   $('widthGroup').hidden = isSelect || ['text', 'note'].includes(tool);
   $('opacityGroup').hidden = isSelect;
 
-  // 面板头部：显示当前分组名
+  // 面板头部：显示当前**具体工具**名（底栏平铺后没有"分组"概念了）
   const head = $('panelHeadName');
   const icon = $('panelHeadIcon');
-  if (head) head.textContent = TOOL_GROUPS[group] ? TOOL_GROUPS[group].label : '';
+  if (head) head.textContent = TOOL_NAMES[tool] || tool;
   if (icon) icon.innerHTML = toolIconSvg(tool, 15);
 
   if (tool !== 'select') clearSelection();
   syncStyleUI();
   requestRender();
-}
-
-/**
- * 刷新主按钮的"当前工具面貌"。
- * 组内工具的图标直接替换主按钮里的 .tool-face 内容。
- */
-function syncGroupFaces() {
-  document.querySelectorAll('.rail-tools .tool[data-group]').forEach((btn) => {
-    const g = btn.dataset.group;
-    const face = btn.querySelector('.tool-face');
-    if (!face) return;
-    // 选择组只有一个工具，固定即可
-    const cur = g === 'select' ? 'select' : (state.groupPick[g] || TOOL_GROUPS[g].tools[0].tool);
-    face.innerHTML = toolIconSvg(cur, 19);
-    /*
-     * 把当前工具同时写回 data-face。
-     * 只换 innerHTML 的话，DOM 上看不出这个按钮现在代表哪个工具 ——
-     * 测试和诊断只能去解析 svg path，既脆又难读。
-     */
-    face.dataset.face = cur;
-    // 同步主按钮 tooltip 里的当前工具名
-    if (g !== 'select') {
-      const meta = TOOL_GROUPS[g].tools.find((t) => t.tool === cur);
-      if (meta) btn.title = `${TOOL_GROUPS[g].label}：${meta.label} (${meta.key})`;
-    }
-  });
 }
 
 function buildSwatches() {
@@ -1527,76 +1477,53 @@ function reorderSelection(mode) {
 
 /* ============================ 事件绑定 ============================ */
 
-/* ---------------- 左侧栏：分组按钮 + 面板内工具变体（1.3.1） ---------------- */
+/* ---------------- 工具底栏（1.4.0） ---------------- */
 /*
- * 1.3.0 的「向右弹出子弹层」方案已废弃，原因不是样式没调好，而是结构上不成立：
- *   - 面板紧贴 rail 右侧（rail 74px，panel 从 x=74 开始，宽 232px），
- *     浮层定位到 rail 右边缘 +6px = 80px，正好整块压进面板底下；
- *   - rail 自己还有 overflow:hidden + z-index:15，是个层叠上下文，
- *     浮层 z-index 提到 60 也只是"在 rail 内部排第一"，照样出不去。
- * 实测 elementFromPoint 在浮层中心命中的是面板按钮，用户侧就是
- * 「点了分组没反应、二级菜单不见了」。
+ * 11 个工具平铺在画布底部的悬浮胶囊里，**一级选择，没有二级菜单**。
  *
- * 现在改成：组内工具直接铺在**面板顶部、颜色上方**（#variantGroup）。
- * 先选画什么、再调什么颜色，顺序符合作画流程，遮挡问题也直接没了。
+ * 1.3.x 折腾过三层方案，全部弃用，原因各不相同：
+ *   - 1.3.0「向右弹出子弹层」：面板紧贴 rail 右侧，浮层整块压在面板底下，
+ *     且 rail 的 overflow:hidden + z-index:15 层叠上下文让它出不来 —— 用户看不到。
+ *   - 1.3.1「面板顶部变体区」：能用，但"先点分组、再点变体"是两步操作，
+ *     而且面板和工具选择耦合在一起，语义混乱。
+ *   - 1.4.0「底部平铺」：现代绘图工具的通用形态（Excalidraw / Freeform），
+ *     所有工具一眼可见、一次点击直达，没有任何中间层可出错。
+ *
+ * 按钮按 TOOL_GROUPS 生成：图标单一来源（TOOL_ICONS），分组间插分隔线。
  */
 
-/**
- * 渲染当前分组的工具变体。
- * 单工具分组（选择）整块隐藏 —— 没有可选项就不要占位置。
- */
-function renderVariants() {
-  const group = state.toolGroup;
-  const g = TOOL_GROUPS[group];
-  const box = $('variantGroup');
-  const wrap = $('variantItems');
-  if (!box || !wrap) return;
+/** 生成底栏按钮。图标/分组/顺序全部来自 TOOL_GROUPS，别在 HTML 里再写一份 */
+function buildDock() {
+  const dock = $('dock');
+  if (!dock) return;
+  dock.innerHTML = '';
 
-  const tools = (g && g.tools) || [];
-  if (tools.length <= 1) {
-    box.hidden = true;
-    wrap.innerHTML = '';
-    return;
-  }
-
-  box.hidden = false;
-  $('variantLabel').textContent = g.label;
-  wrap.innerHTML = '';
-  tools.forEach((t) => {
-    const b = document.createElement('button');
-    b.className = 'variant-btn';
-    b.dataset.tool = t.tool;
-    if (state.tool === t.tool) b.classList.add('active');
-    b.title = `${t.label} (${t.key})`;
-    b.innerHTML = `${toolIconSvg(t.tool, 17)}<span>${t.label}</span>`;
-    b.addEventListener('click', () => {
-      state.groupPick[group] = t.tool;
-      setTool(t.tool);
+  Object.keys(TOOL_GROUPS).forEach((gname, gi) => {
+    if (gi > 0) {
+      const sep = document.createElement('span');
+      sep.className = 'dock-sep';
+      dock.appendChild(sep);
+    }
+    const g = TOOL_GROUPS[gname];
+    const tools = g.tools.length ? g.tools : [{ tool: gname, label: g.label, key: TOOL_KEYS[gname] || '' }];
+    tools.forEach((t) => {
+      const b = document.createElement('button');
+      b.className = 'dock-btn';
+      b.dataset.tool = t.tool;
+      b.dataset.group = gname;
+      b.title = `${t.label}${t.key ? ' (' + t.key + ')' : ''}`;
+      b.setAttribute('aria-label', t.label);
+      b.innerHTML = toolIconSvg(t.tool, 19);
+      b.addEventListener('click', () => setTool(t.tool));
+      dock.appendChild(b);
     });
-    wrap.appendChild(b);
   });
 }
 
-/**
- * 分组按钮点击：切到该分组"记住的工具"。
- * 组内其它工具在面板顶部的变体区里选，不再有弹出层。
- */
-document.querySelectorAll('.rail-tools .tool').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const group = btn.dataset.group;
-    const g = TOOL_GROUPS[group];
-    if (!g) return;
-    if (!g.tools.length) {          // 单工具：选择
-      setTool(group);
-      return;
-    }
-    // 已在该分组就保持当前具体工具，否则回到记住的那个
-    const pick = TOOL_TO_GROUP[state.tool] === group
-      ? state.tool
-      : (state.groupPick[group] || g.tools[0].tool);
-    state.groupPick[group] = pick;
-    setTool(pick);
-  });
+/* 点底栏按钮切工具（事件委托，按钮是动态生成的） */
+$('dock').addEventListener('click', (e) => {
+  const btn = e.target.closest('.dock-btn');
+  if (btn && btn.dataset.tool) setTool(btn.dataset.tool);
 });
 
 $('colorPicker').addEventListener('input', (e) => {
@@ -1746,6 +1673,7 @@ ro.observe(stage);
 
 renderer.resize();
 buildSwatches();
+buildDock();
 syncStyleUI();
 setTool('pen');
 updateHistoryButtons();
@@ -1770,7 +1698,7 @@ window.inkwell.getInfo().then((info) => {
 
 // 暴露给自动化测试 / 控制台调试使用
 window.__inkwell = {
-  version: '1.3.3',
+  version: '1.4.0',
   store,
   renderer,
   state,

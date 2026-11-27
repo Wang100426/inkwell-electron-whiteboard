@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * 回归测试：1.3.0 无边框窗口 + 左侧栏精简为四个分组。
+ * 回归测试：1.4.0 无边框窗口 + 工具底栏（11 工具平铺，一级选择）。
  *
  * 覆盖：
  *   A. 主进程窗口配置（无边框、标题栏隐藏、overlay 关闭）
@@ -12,7 +12,7 @@
  *   F. 应用图标用的是 assets/icon.png（不再是无意义的内联 SVG）
  *   G. 拖拽区正确：rail 可拖，但按钮全部 no-drag
  *   H. 滚动条风格统一（全局唯一定义，两处颜色一致）
- *   I. 四个分组按钮 + 面板顶部工具变体区（1.3.1，替代被遮挡的子弹层）
+ *   I. 工具底栏：平铺/命中/几何/高亮同步/快捷键/动画安全
  *
  * 用法：env -u ELECTRON_RUN_AS_NODE npx electron scripts/test-shell.js
  *      （或 npm run test:shell）
@@ -30,7 +30,7 @@ app.commandLine.appendSwitch('no-sandbox');
 
 const ROOT = path.join(__dirname, '..');
 
-ipcMain.handle('app:info', () => ({ version: '1.3.3', platform: process.platform, electron: process.versions.electron }));
+ipcMain.handle('app:info', () => ({ version: '1.4.0', platform: process.platform, electron: process.versions.electron }));
 ipcMain.handle('file:save', () => ({ ok: false }));
 ipcMain.on('app:health', () => {});
 ipcMain.on('app:trace', () => {});
@@ -74,7 +74,7 @@ app.whenReady().then(async () => {
   check('preload 暴露 onMaximizedChange', /onMaximizedChange:/.test(preSrc));
 
   /* ---------- 打开真实窗口做 DOM 断言 ---------- */
-  // 高度取 620：保证 rail-tools 内容溢出、真正出现滚动条，
+  // 高度取 620：小窗口下验证底栏/文件操作仍然都在视口内，
   // 否则滚动条相关断言测得的是"没有滚动条"的空情况。
   const win = new BrowserWindow({
     width: 1440, height: 620, show: true, useContentSize: true, backgroundColor: '#0f1115',
@@ -114,19 +114,17 @@ app.whenReady().then(async () => {
         grid: inRail('btnGrid'), export: inRail('btnExport'),
         open: inRail('btnOpen'), save: inRail('btnSave'), fit: inRail('btnFit'),
       },
-      toolCount: document.querySelectorAll('.rail .tool').length,
-      // 1.3.0：左侧栏精简为 4 个分组按钮
-      groups: Array.from(document.querySelectorAll('.rail .tool.tool-group')).map((el) => el.getAttribute('data-group')),
-      groupedCount: document.querySelectorAll('.rail .tool.tool-group').length,
-      legacyToolCount: document.querySelectorAll('.rail .tool:not(.tool-group)').length,
       /*
-       * 1.3.1：组内工具从「向右弹出的子弹层」改为「面板顶部的变体区」。
-       * 子弹层被面板压住的 bug 见 #variantGroup 相关断言。
+       * 1.4.0：工具全部挪到画布底部悬浮底栏（.dock），一级平铺，
+       * 分组/子弹层/变体区三代方案全部退役。
        */
-      hasVariantGroup: !!q('variantGroup'),
-      hasVariantItems: !!q('variantItems'),
+      dockInStage: !!(q('dock') && q('stage') && q('stage').contains(q('dock'))),
+      dockCount: document.querySelectorAll('#dock .dock-btn').length,
+      dockTools: Array.from(document.querySelectorAll('#dock .dock-btn')).map((b) => b.dataset.tool),
+      dockSeps: document.querySelectorAll('#dock .dock-sep').length,
+      railToolsGone: document.querySelectorAll('.rail .tool, .rail-tools').length === 0,
+      variantGone: !q('variantGroup'),
       flyoutGone: !q('flyout'),
-      caretGone: document.querySelectorAll('.rail .tool .caret').length === 0,
       // 自绘窗口按钮
       winBtns: {
         min: !!q('btnMinimize'), max: !!q('btnMaximize'), close: !!q('btnWinClose'),
@@ -160,22 +158,25 @@ app.whenReady().then(async () => {
   check('打开在左侧栏内', dom.railKids.open);
   check('保存在左侧栏内', dom.railKids.save);
   check('适应窗口在左侧栏内', dom.railKids.fit);
-  check('左侧栏精简为 4 个分组按钮', dom.toolCount === 4, dom.toolCount);
-  check('分组按钮不再有散落的独立工具', dom.legacyToolCount === 0, dom.legacyToolCount);
+  check('工具底栏挂在 stage 内', dom.dockInStage === true);
+  check('底栏有全部 11 个工具', dom.dockCount === 11, dom.dockCount);
   check(
-    '四个分组 = 选择/绘画/图形/文本',
-    ['select', 'draw', 'shape', 'text'].every((g) => dom.groups.includes(g)) && dom.groupedCount === 4,
-    dom.groups
+    '底栏工具齐全且分组有序',
+    JSON.stringify(dom.dockTools) === JSON.stringify(
+      ['select', 'pen', 'eraser', 'hand', 'rect', 'ellipse', 'line', 'arrow', 'fill', 'text', 'note']
+    ),
+    dom.dockTools
   );
-  check('变体区容器存在（面板顶部）', dom.hasVariantGroup && dom.hasVariantItems);
-  check('旧的子弹层已彻底移除', dom.flyoutGone);
-  check('分组按钮不再挂展开小三角', dom.caretGone);
+  check('分组之间有分隔线（4 组 3 条）', dom.dockSeps === 3, dom.dockSeps);
+  check('左侧栏不再放工具', dom.railToolsGone === true);
+  check('旧的变体区已移除', dom.variantGone === true);
+  check('旧的子弹层已彻底移除', dom.flyoutGone === true);
 
   check('自绘三个窗口按钮存在', dom.winBtns.min && dom.winBtns.max && dom.winBtns.close);
   check('窗口按钮位于 stage 内', dom.winBtns.inStage);
   check('preload 提供 minimizeWindow', dom.winBtns.minimizeCalled);
   check('旧 gridToggle 开关已删除', dom.gridToggleGone);
-  check('版本号已升到 1.3.3', dom.version === '1.3.3', dom.version);
+  check('版本号已升到 1.4.0', dom.version === '1.4.0', dom.version);
 
   check('应用图标用 assets/icon.png', dom.brandImg && /icon\.png$/.test(dom.brandImg.src), dom.brandImg);
   check('图标资源实际加载成功', dom.brandImg && dom.brandImg.natural > 0, dom.brandImg && dom.brandImg.natural);
@@ -186,22 +187,14 @@ app.whenReady().then(async () => {
 
   /* ---------- H. 滚动条风格统一 ---------- */
   /*
-   * 左侧栏工具区与右侧面板必须是同一套滚动条视觉。
-   *
-   * 曾经的 bug：.rail-tools 单独写了 `scrollbar-width: thin`，
-   * 这条标准属性会**整体接管**该元素的滚动条渲染，
-   * 使全局 ::-webkit-scrollbar-* 规则失效 —— 两处滚动条长相不一致。
-   *
-   * 判定标准：
-   *  1. 两处都不能有 scrollbar-width / scrollbar-color 的局部覆盖
-   *  2. 滑块颜色变量必须一致（同一个 --sb-thumb）
-   *  3. 全局样式表里必须存在 ::-webkit-scrollbar-thumb 规则
+   * 1.4.0 起 rail 里没有滚动区了（工具挪到底栏），
+   * 全局唯一滚动源是右侧面板 —— 检查简化为：
+   *  1. 面板没有 scrollbar-width / scrollbar-color 局部覆盖
+   *  2. 全局样式表里存在 ::-webkit-scrollbar-thumb / -button 规则
    */
   const sb = await evalJs(`
-    const rt = document.getElementById('railTools');
     const pn = document.querySelector('.panel');
     const cs = (el, p) => getComputedStyle(el).getPropertyValue(p).trim();
-    // 遍历样式表，找出所有含 scrollbar 的选择器
     const sel = [];
     for (const sheet of document.styleSheets) {
       let rules;
@@ -211,29 +204,17 @@ app.whenReady().then(async () => {
       }
     }
     return {
-      railSbWidth: cs(rt, 'scrollbar-width'),
       panelSbWidth: cs(pn, 'scrollbar-width'),
-      railThumb: cs(rt, '--sb-thumb'),
-      panelThumb: cs(pn, '--sb-thumb'),
-      railW: cs(rt, '--sb-w'),
-      panelW: cs(pn, '--sb-w'),
-      railInset: cs(rt, '--sb-inset'),
-      panelInset: cs(pn, '--sb-inset'),
       scrollbarSelectors: sel,
-      railScrollable: rt.scrollHeight > rt.clientHeight,
+      railScrollable: document.querySelector('.rail').scrollHeight > document.querySelector('.rail').clientHeight,
     };
   `);
-  check('rail 未覆盖 scrollbar-width', sb.railSbWidth === 'auto', sb.railSbWidth);
   check('panel 未覆盖 scrollbar-width', sb.panelSbWidth === 'auto', sb.panelSbWidth);
-  check('两处滑块颜色变量一致', sb.railThumb === sb.panelThumb && !!sb.railThumb,
-    { rail: sb.railThumb, panel: sb.panelThumb });
   check('全局有 ::-webkit-scrollbar-thumb 规则',
     sb.scrollbarSelectors.some((s) => /::-webkit-scrollbar-thumb/.test(s)), sb.scrollbarSelectors);
   check('滚动条箭头按钮已隐藏',
     sb.scrollbarSelectors.some((s) => /::-webkit-scrollbar-button/.test(s)));
-  // 只允许宽度/内缩不同，颜色必须同源
-  check('rail 滚动条更窄（适配 74px 窄栏）',
-    parseInt(sb.railW, 10) < parseInt(sb.panelW, 10), { rail: sb.railW, panel: sb.panelW });
+  check('rail 不再出现滚动（工具已挪走）', sb.railScrollable === false);
 
   /* ---------- E. 网格单一状态源 ---------- */
   const grid = await evalJs(`
@@ -259,160 +240,128 @@ app.whenReady().then(async () => {
   check('setGrid(true) 生效且图标同步', grid.afterSetTrue === true && grid.activeAfterSetTrue === true);
   check('setGrid(false) 生效且图标同步', grid.afterSetFalse === false && grid.activeAfterSetFalse === false);
 
-  /* ---------- I. 分组按钮 + 面板内工具变体（1.3.1） ---------- */
+  /* ---------- I. 工具底栏（1.4.0） ---------- */
   /*
-   * 左侧栏是 4 个分组按钮，组内具体工具铺在面板顶部、颜色之上。
+   * 11 个工具平铺在画布底部悬浮胶囊，一级选择，没有二级菜单。
    *
-   * 这里同时守住 1.3.0 那个「严重 bug」：当时工具列表是向右弹出的浮层，
-   * 定位在 rail 右边缘 +6px，而面板正好从 x=74 起 —— 浮层整块压进面板底下，
-   * DOM 一切正常（hidden=false、items 齐全）但用户完全看不见。
-   * 所以下面除了断言结构，还要断言**几何顺序**与**命中测试**。
+   * 历史包袱（都要守住）：
+   *   - 1.3.0 子弹层被面板遮挡 → 断言每个按钮 elementFromPoint 命中自身；
+   *   - 1.3.1 变体区两步操作 → 现在单击直达，断言"点一下就切好"；
+   *   - 底栏悬浮在画布上 → 断言几何：不出视口、不压状态栏、不进面板。
    */
-  const groupBtn = (g) => `document.querySelector('.rail-tools .tool[data-group="${g}"]')`;
-  const variantHidden = `document.getElementById('variantGroup').hidden`;
-  const variantTools = `Array.from(document.querySelectorAll('#variantItems .variant-btn')).map(b => b.dataset.tool)`;
+  const dockBtn = (t) => `document.querySelector('#dock .dock-btn[data-tool="${t}"]')`;
 
-  // 1) 单工具分组：选择 —— 变体区应隐藏
-  const sel = await evalJs(`
-    const out = {};
-    ${groupBtn('select')}.click();
-    out.tool = window.__inkwell.state.tool;
-    out.variantHidden = ${variantHidden};
-    return out;
-  `);
-  check('点「选择」直接切工具', sel.tool === 'select', sel.tool);
-  check('选择分组不显示变体区', sel.variantHidden === true);
-
-  // 2) 多工具分组：图形
-  const g1 = await evalJs(`
-    const out = {};
-    ${groupBtn('shape')}.click();
-    out.hidden = ${variantHidden};
-    out.items = ${variantTools};
-    out.label = document.getElementById('variantLabel').textContent;
-    out.tool = window.__inkwell.state.tool;
-    return out;
-  `);
-  check('点「图形」显示变体区', g1.hidden === false, g1);
-  check('变体区列出组内 5 个工具', g1.items.length === 5, g1.items);
-  check(
-    '变体区含 矩形/椭圆/直线/箭头/填充',
-    ['rect', 'ellipse', 'line', 'arrow', 'fill'].every((t) => g1.items.includes(t)),
-    g1.items
-  );
-  check('变体区标题 = 图形', g1.label === '图形', g1.label);
-  check('切到分组时自带组内默认工具', g1.tool === 'rect', g1.tool);
-
-  // 3) 几何：变体区必须在面板里，且在颜色之上（不重叠）
-  const geoVariant = await evalJs(`
-    const vg = document.getElementById('variantGroup');
-    const cg = document.getElementById('colorGroup');
-    const panel = document.getElementById('panel');
-    const vb = vg.getBoundingClientRect();
-    const cb = cg.getBoundingClientRect();
-    const pb = panel.getBoundingClientRect();
-    const rail = document.getElementById('rail').getBoundingClientRect();
+  // 1) 点一个工具 → 立即切换 + 高亮（一级直达）
+  const s1 = await evalJs(`
+    ${dockBtn('ellipse')}.click();
     return {
-      inPanel: panel.contains(vg),
-      // 变体区左边缘应在面板内（也就是在 rail 右侧之外）
-      leftOfPanel: Math.round(vb.left), rightOfRail: Math.round(rail.right),
-      variantTop: Math.round(vb.top), variantBottom: Math.round(vb.bottom),
-      colorTop: Math.round(cb.top),
-      overlapColor: vb.bottom > cb.top + 1,
+      tool: window.__inkwell.state.tool,
+      active: document.querySelector('#dock .dock-btn.active').dataset.tool,
+      activeCount: document.querySelectorAll('#dock .dock-btn.active').length,
+      headName: document.getElementById('panelHeadName').textContent,
+      stageClass: document.getElementById('stage').className.indexOf('tool-ellipse') >= 0,
     };
   `);
-  check('变体区在面板内（不在 rail 里）', geoVariant.inPanel === true, geoVariant);
-  check('变体区完整位于 rail 右侧（不会被 rail 的 overflow 裁掉）',
-    geoVariant.leftOfPanel >= geoVariant.rightOfRail, geoVariant);
-  check('变体区在颜色区上方且不重叠',
-    geoVariant.variantBottom <= geoVariant.colorTop && geoVariant.overlapColor === false, geoVariant);
+  check('点底栏按钮一次即切到椭圆', s1.tool === 'ellipse', s1.tool);
+  check('底栏高亮精确点亮当前工具', s1.active === 'ellipse' && s1.activeCount === 1, s1);
+  check('面板头显示当前工具名', s1.headName === '椭圆', s1.headName);
+  check('stage 光标类同步', s1.stageClass === true);
 
-  // 4) 每个变体按钮都能真正被点中（elementFromPoint 命中自身）—— 1.3.0 就是栽在这
+  // 2) 几何：底栏在 stage 底部、水平居中、不压状态栏、不出视口
+  const geoDock = await evalJs(`
+    const d = document.getElementById('dock').getBoundingClientRect();
+    const st = document.getElementById('statusBar').getBoundingClientRect();
+    const stage = document.getElementById('stage').getBoundingClientRect();
+    const csDock = getComputedStyle(document.getElementById('dock'));
+    return {
+      dockBottom: Math.round(d.bottom), dockTop: Math.round(d.top),
+      stageBottom: Math.round(stage.bottom),
+      cssBottom: csDock.bottom, cssPos: csDock.position,
+      statusTop: Math.round(st.top), statusBottom: Math.round(st.bottom),
+      inViewport: d.left >= 0 && d.right <= window.innerWidth && d.bottom <= window.innerHeight,
+      centered: Math.abs((d.left + d.right) / 2 - (stage.left + stage.right) / 2) <= 2,
+      aboveStatus: d.bottom <= st.top + 1,
+      w: Math.round(d.width), h: Math.round(d.height),
+    };
+  `);
+  check('底栏完整落在视口内', geoDock.inViewport === true, geoDock);
+  check('底栏水平居中于画布', geoDock.centered === true, geoDock);
+  check('底栏不压状态栏', geoDock.aboveStatus === true, geoDock);
+  check('底栏尺寸合理（宽度 380~520、高约 48）',
+    geoDock.w >= 380 && geoDock.w <= 520 && geoDock.h >= 44 && geoDock.h <= 56, geoDock);
+
+  // 3) 每个按钮都能被真实命中（1.3.0 遮挡 bug 的教训）
   const hitTest = await evalJs(`
-    const btns = Array.from(document.querySelectorAll('#variantItems .variant-btn'));
-    return btns.map((b) => {
+    return Array.from(document.querySelectorAll('#dock .dock-btn')).map((b) => {
       const r = b.getBoundingClientRect();
       const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
       return { tool: b.dataset.tool, hitSelf: !!(el && (el === b || b.contains(el))) };
     });
   `);
-  check('变体按钮全部可被真实命中（无遮挡）',
-    hitTest.length === 5 && hitTest.every((h) => h.hitSelf),
+  check('底栏 11 个按钮全部可被真实命中',
+    hitTest.length === 11 && hitTest.every((h) => h.hitSelf),
     hitTest.filter((h) => !h.hitSelf));
 
-  // 5) 点变体区里的「椭圆」→ 切工具 + 高亮 + 左侧栏图标同步
-  const g2 = await evalJs(`
-    document.querySelector('#variantItems .variant-btn[data-tool="ellipse"]').click();
-    const face = document.querySelector('.rail-tools .tool[data-group="shape"] .tool-face');
-    return {
-      tool: window.__inkwell.state.tool,
-      active: (document.querySelector('#variantItems .variant-btn.active') || {}).dataset.tool,
-      railFace: face ? face.dataset.face : null,
-      stillVisible: ${variantHidden} === false,
-    };
+  // 4) 逐个点击全部工具，确认都能切
+  const s4 = await evalJs(`
+    const tools = ['select','pen','eraser','hand','rect','ellipse','line','arrow','fill','text','note'];
+    const bad = [];
+    tools.forEach((t) => {
+      document.querySelector('#dock .dock-btn[data-tool="' + t + '"]').click();
+      if (window.__inkwell.state.tool !== t) bad.push(t);
+    });
+    return { bad };
   `);
-  check('点变体按钮切到椭圆', g2.tool === 'ellipse', g2.tool);
-  check('变体区高亮当前工具', g2.active === 'ellipse', g2.active);
-  check('左侧栏分组图标同步成椭圆', g2.railFace === 'ellipse', g2.railFace);
-  check('选完变体区仍然可见（不是一次性浮层）', g2.stillVisible === true);
+  check('11 个工具逐个点击全部切换成功', s4.bad.length === 0, s4.bad);
 
-  // 6) 已在组内时再点分组按钮 → 保持当前工具，不被重置
-  const g3 = await evalJs(`
-    ${groupBtn('shape')}.click();
-    return window.__inkwell.state.tool;
-  `);
-  check('在组内再点分组按钮不会重置工具', g3 === 'ellipse', g3);
-
-  // 7) 去别的分组再回来 → 记住的是椭圆
-  const g4 = await evalJs(`
-    ${groupBtn('draw')}.click();
-    const mid = window.__inkwell.state.tool;
-    ${groupBtn('shape')}.click();
-    return { mid, back: window.__inkwell.state.tool };
-  `);
-  check('切到绘画分组用的是组内工具', g4.mid === 'pen', g4.mid);
-  check('回到图形分组恢复上次选的椭圆', g4.back === 'ellipse', g4.back);
-
-  // 8) 文本分组：文本 / 便签
-  const g5 = await evalJs(`
-    ${groupBtn('text')}.click();
-    return { items: ${variantTools}, tool: window.__inkwell.state.tool,
-             hidden: ${variantHidden} };
-  `);
-  check('文本分组含 文本/便签',
-    g5.items.length === 2 && g5.items.includes('text') && g5.items.includes('note'), g5.items);
-  check('文本分组默认切到文本工具', g5.tool === 'text', g5.tool);
-
-  // 9) 自由绘画分组：画笔 / 橡皮 / 抓手
-  const g6 = await evalJs(`
-    ${groupBtn('draw')}.click();
-    return ${variantTools};
-  `);
-  check('绘画分组含 画笔/橡皮/抓手',
-    g6 && g6.length === 3 && ['pen', 'eraser', 'hand'].every((t) => g6.includes(t)),
-    g6
-  );
-
-  // 10) 快捷键切工具时，变体区也要跟着切分组并高亮
-  //     （renderVariants 挂在 setTool 里，而不是只挂在按钮 click 上）
-  const g7 = await evalJs(`
+  // 5) 快捷键切工具，底栏高亮同步（sync 写在 setTool 里）
+  const s5 = await evalJs(`
     window.__inkwell.setTool('pen');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'o', code: 'KeyO', bubbles: true }));
     return {
       tool: window.__inkwell.state.tool,
-      group: window.__inkwell.state.toolGroup,
-      hidden: ${variantHidden},
-      active: (document.querySelector('#variantItems .variant-btn.active') || {}).dataset
-        ? document.querySelector('#variantItems .variant-btn.active').dataset.tool : null,
-      label: document.getElementById('variantLabel').textContent,
+      active: document.querySelector('#dock .dock-btn.active').dataset.tool,
     };
   `);
-  check('按 O 切到椭圆', g7.tool === 'ellipse', g7.tool);
-  check('快捷键切工具后变体区跟着切组', g7.hidden === false && g7.label === '图形', g7.label);
-  check('快捷键切工具后变体区高亮同步', g7.active === 'ellipse', g7.active);
+  check('按 O 切到椭圆', s5.tool === 'ellipse', s5.tool);
+  check('快捷键切换后底栏高亮同步', s5.active === 'ellipse', s5.active);
 
-  // 收尾：切回矩形，避免影响后续断言
-  await evalJs(`window.__inkwell.setTool('rect'); return 1;`);
+  // 6) 动画安全：dock-in 只动 transform 不动 opacity
+  //    本机 CSS 动画可能冻在第一帧，from 里写 opacity:0 会让底栏永远隐身
+  const animSafe = await evalJs(`
+    const d = document.getElementById('dock');
+    const cs = getComputedStyle(d);
+    return { opacity: cs.opacity, animName: cs.animationName, visible: !d.hidden };
+  `);
+  check('底栏不依赖 opacity 入场动画（防冻结隐身）',
+    parseFloat(animSafe.opacity) >= 0.99, animSafe);
+
+  // 7) 全局动画纪律：@keyframes 的 from 帧不得写 opacity（防冻结隐身）
+  //    关闭确认框曾经 mask-in/modal-in 都是 opacity:0 起帧，
+  //    动画一冻，确认框永久隐身，应用看起来像卡死。
+  const kf = await evalJs(`
+    const bad = [];
+    for (const sheet of document.styleSheets) {
+      let rules;
+      try { rules = sheet.cssRules || []; } catch (e) { continue; }
+      for (const r of rules) {
+        if (r.type !== 7 /* KEYFRAMES_RULE */) continue;
+        for (const f of r.cssRules) {
+          const t = (f.keyText || '').toLowerCase();
+          if (t === 'from' || t === '0%') {
+            const css = f.style ? f.style.cssText : f.cssText;
+            if (/opacity\s*:\s*0/.test(css)) bad.push(r.name);
+          }
+        }
+      }
+    }
+    return { bad };
+  `);
+  check('任何 keyframe 都不允许 opacity:0 起帧（防冻结隐身）',
+    kf.bad.length === 0, kf.bad);
+
+  // 收尾：切回画笔
+  await evalJs(`window.__inkwell.setTool('pen'); return 1;`);
 
   /* ---------- B. 点击真实按钮是否触发 IPC ---------- */
   await evalJs(`document.getElementById('btnMinimize').click(); return 1;`);
